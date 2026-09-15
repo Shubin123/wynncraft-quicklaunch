@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Wynncraft (Quick Launch)
+Comment=Launch straight into play.wynncraft.com with Wynntils + Wynnventory, skipping the Prism Launcher UI
+Exec=prismlauncher -l "Wynncraft-1.21.11" -s play.wynncraft.com
+Icon=org.prismlauncher.PrismLauncher
+Terminal=false
+Categories=Game;

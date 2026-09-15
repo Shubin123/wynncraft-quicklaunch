@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Price Dashboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --card: #ffffff;
+    --text: #1c1c1c;
+    --muted: #666;
+    --border: #e4e2dc;
+    --accent: #2e6b3e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a1a;
+      --card: #242424;
+      --text: #f0f0ee;
+      --muted: #aaa;
+      --border: #3a3a3a;
+      --accent: #5fbf76;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a;
+    --card: #242424;
+    --text: #f0f0ee;
+    --muted: #aaa;
+    --border: #3a3a3a;
+    --accent: #5fbf76;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding-block: 24px;
+    padding-inline: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 0.9rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  button {
+    margin-top: 10px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status { font-size: 0.85rem; margin-top: 8px; color: var(--muted); }
+  a { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Wynncraft Price Dashboard</h1>
+  <p class="sub">Read-only price reference for Wynncraft's Trade Market, sourced from Wynnventory's crowdsourced data. This page does not place, execute, or automate any trades &mdash; that always happens in the actual Minecraft client.</p>
+
+  <div class="card">
+    <label for="key">Wynnventory API key (optional)</label>
+    <input type="password" id="key" placeholder="Request one from the Wynnventory team (Discord: @Aruloci / @Sirop)" />
+    <button id="save">Save key locally</button>
+    <div class="status" id="key-status"></div>
+  </div>
+
+  <div class="card">
+    <label for="q">Item name</label>
+    <input type="text" id="q" placeholder="e.g. Moph" />
+    <button id="lookup">Look up price</button>
+    <div class="status" id="lookup-status"></div>
+    <table id="results" hidden>
+      <thead><tr><th>Item</th><th>Lowest ask</th><th>Highest bid</th><th>7-day avg</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <p class="sub" style="margin:0">
+      No key yet, or the API is unreachable? Use Wynnventory's own live dashboard directly:
+      <a href="https://www.wynnventory.com" target="_blank" rel="noopener">wynnventory.com</a>.
+      In-game, the Wynntils + Wynnventory mods already show these prices as item tooltips while you shop the Trade Market &mdash; that's the fastest path for actually trading.
+    </p>
+  </div>
+</div>
+
+<script>
+  const KEY_STORAGE = "wynnventory_api_key";
+  const keyInput = document.getElementById("key");
+  const keyStatus = document.getElementById("key-status");
+  const saveBtn = document.getElementById("save");
+  const lookupBtn = document.getElementById("lookup");
+  const qInput = document.getElementById("q");
+  const lookupStatus = document.getElementById("lookup-status");
+  const resultsTable = document.getElementById("results");
+  const resultsBody = resultsTable.querySelector("tbody");
+
+  try {
+    const stored = localStorage.getItem(KEY_STORAGE);
+    if (stored) {
+      keyInput.value = stored;
+      keyStatus.textContent = "Using a saved key from this browser.";
+    }
+  } catch (e) {
+    keyStatus.textContent = "Local storage unavailable in this browser; key won't persist across reloads.";
+  }
+
+  saveBtn.addEventListener("click", () => {
+    try {
+      localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
+      keyStatus.textContent = "Saved in this browser only.";
+    } catch (e) {
+      keyStatus.textContent = "Couldn't save (local storage blocked).";
+    }
+  });
+
+  // NOTE: Wynnventory's trade-market read endpoint requires a dev API key
+  // issued directly by the Wynnventory team; there is no public/unauthenticated
+  // endpoint. Fill in the real path here once you have a key and have confirmed
+  // it with their docs -- this is intentionally left as a stub rather than a
+  // guessed endpoint.
+  const API_BASE = "https://api.wynnventory.com"; // placeholder, confirm with Wynnventory team
+
+  lookupBtn.addEventListener("click", async () => {
+    const key = keyInput.value.trim();
+    const item = qInput.value.trim();
+    resultsTable.hidden = true;
+    resultsBody.innerHTML = "";
+
+    if (!item) {
+      lookupStatus.textContent = "Enter an item name first.";
+      return;
+    }
+    if (!key) {
+      lookupStatus.textContent = "No API key set - see the note below for wynnventory.com or in-game tooltips instead.";
+      return;
+    }
+
+    lookupStatus.textContent = "Looking up...";
+    try {
+      const res = await fetch(`${API_BASE}/trademarket/items/${encodeURIComponent(item)}`, {
+        headers: { Authorization: `Bearer ${key}` }
+      });
+      if (!res.ok) {
+        throw new Error(`Request failed (${res.status})`);
+      }
+      const data = await res.json();
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${data.name ?? item}</td><td>${data.lowestAsk ?? "-"}</td><td>${data.highestBid ?? "-"}</td><td>${data.avg7d ?? "-"}</td>`;
+      resultsBody.appendChild(row);
+      resultsTable.hidden = false;
+      lookupStatus.textContent = "";
+    } catch (err) {
+      lookupStatus.textContent = `Lookup failed: ${err.message}. Confirm the endpoint path with the Wynnventory team's docs, or use wynnventory.com directly.`;
+    }
+  });
+</script>
+</body>
+</html>
