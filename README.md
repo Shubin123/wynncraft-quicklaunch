@@ -75,17 +75,33 @@ browse the market in-game.
 
 ## Price dashboard
 
-`dashboard/index.html` is a static, read-only reference page. Wynnventory's
-trade-market data API requires a developer API key requested directly from
-their team (Discord: `@Aruloci` / `@Sirop`) - there is no public/unauthenticated
-endpoint. Paste a key into the page (stored only in your browser's local
-storage) to enable lookups, or just use
-[wynnventory.com](https://www.wynnventory.com) directly. In-game tooltips from
-the mods themselves remain the fastest way to check a price while trading.
+`dashboard/index.html` is a read-only reference page for Trade Market prices.
+Wynnventory's API requires a developer key from their team (Discord:
+`@Aruloci` / `@Sirop`), and their API doesn't send CORS headers, so a plain
+static page can't call it directly from the browser. Instead,
+`scripts/wynn_price_server.py` runs a small local proxy: it holds the API key
+server-side and gives the page a same-origin `/api/price` endpoint to call.
+**The key never reaches the browser or gets committed to this repo.**
 
-Open it locally:
+Put your key in one of these (checked in this order):
 
 ```bash
-python3 -m http.server -d dashboard 8000
-# then visit http://localhost:8000
+export WYNNVENTORY_API_KEY="..."
+# or
+mkdir -p ~/.config/wynn-dashboard
+echo "..." > ~/.config/wynn-dashboard/wynnventory.key
+chmod 600 ~/.config/wynn-dashboard/wynnventory.key
 ```
+
+Then run:
+
+```bash
+python3 scripts/wynn_price_server.py
+# then visit http://localhost:8123
+```
+
+The static copy published to GitHub Pages (`docs/index.html`) is informational
+only - it can't run the proxy, so it just links to
+[wynnventory.com](https://www.wynnventory.com) and to these instructions.
+In-game tooltips from the Wynntils/Wynnventory mods remain the fastest way to
+check a price while actually trading.

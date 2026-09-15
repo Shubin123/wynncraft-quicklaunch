@@ -82,74 +82,38 @@
 <body>
 <div class="wrap">
   <h1>Wynncraft Price Dashboard</h1>
-  <p class="sub">Read-only price reference for Wynncraft's Trade Market, sourced from Wynnventory's crowdsourced data. This page does not place, execute, or automate any trades &mdash; that always happens in the actual Minecraft client.</p>
-
-  <div class="card">
-    <label for="key">Wynnventory API key (optional)</label>
-    <input type="password" id="key" placeholder="Request one from the Wynnventory team (Discord: @Aruloci / @Sirop)" />
-    <button id="save">Save key locally</button>
-    <div class="status" id="key-status"></div>
-  </div>
+  <p class="sub">Read-only price reference for Wynncraft's Trade Market, sourced from Wynnventory's crowdsourced data via a local proxy. This page does not place, execute, or automate any trades &mdash; that always happens in the actual Minecraft client.</p>
 
   <div class="card">
     <label for="q">Item name</label>
-    <input type="text" id="q" placeholder="e.g. Moph" />
+    <input type="text" id="q" placeholder="e.g. Comet" />
     <button id="lookup">Look up price</button>
     <div class="status" id="lookup-status"></div>
     <table id="results" hidden>
-      <thead><tr><th>Item</th><th>Lowest ask</th><th>Highest bid</th><th>7-day avg</th></tr></thead>
+      <thead><tr><th>Item</th><th>Lowest</th><th>Highest</th><th>Average</th><th>Listings</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
   <div class="card">
     <p class="sub" style="margin:0">
-      No key yet, or the API is unreachable? Use Wynnventory's own live dashboard directly:
-      <a href="https://www.wynnventory.com" target="_blank" rel="noopener">wynnventory.com</a>.
-      In-game, the Wynntils + Wynnventory mods already show these prices as item tooltips while you shop the Trade Market &mdash; that's the fastest path for actually trading.
+      This page talks to a small local proxy (<code>scripts/wynn_price_server.py</code>), which holds the
+      Wynnventory API key and calls their API server-side &mdash; the key never reaches this page or your
+      browser. Not running the proxy, or want the full site? Use
+      <a href="https://www.wynnventory.com" target="_blank" rel="noopener">wynnventory.com</a> directly, or
+      check the in-game Wynntils/Wynnventory tooltips while browsing the Trade Market.
     </p>
   </div>
 </div>
 
 <script>
-  const KEY_STORAGE = "wynnventory_api_key";
-  const keyInput = document.getElementById("key");
-  const keyStatus = document.getElementById("key-status");
-  const saveBtn = document.getElementById("save");
   const lookupBtn = document.getElementById("lookup");
   const qInput = document.getElementById("q");
   const lookupStatus = document.getElementById("lookup-status");
   const resultsTable = document.getElementById("results");
   const resultsBody = resultsTable.querySelector("tbody");
 
-  try {
-    const stored = localStorage.getItem(KEY_STORAGE);
-    if (stored) {
-      keyInput.value = stored;
-      keyStatus.textContent = "Using a saved key from this browser.";
-    }
-  } catch (e) {
-    keyStatus.textContent = "Local storage unavailable in this browser; key won't persist across reloads.";
-  }
-
-  saveBtn.addEventListener("click", () => {
-    try {
-      localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
-      keyStatus.textContent = "Saved in this browser only.";
-    } catch (e) {
-      keyStatus.textContent = "Couldn't save (local storage blocked).";
-    }
-  });
-
-  // NOTE: Wynnventory's trade-market read endpoint requires a dev API key
-  // issued directly by the Wynnventory team; there is no public/unauthenticated
-  // endpoint. Fill in the real path here once you have a key and have confirmed
-  // it with their docs -- this is intentionally left as a stub rather than a
-  // guessed endpoint.
-  const API_BASE = "https://api.wynnventory.com"; // placeholder, confirm with Wynnventory team
-
-  lookupBtn.addEventListener("click", async () => {
-    const key = keyInput.value.trim();
+  async function lookup() {
     const item = qInput.value.trim();
     resultsTable.hidden = true;
     resultsBody.innerHTML = "";
@@ -158,29 +122,26 @@
       lookupStatus.textContent = "Enter an item name first.";
       return;
     }
-    if (!key) {
-      lookupStatus.textContent = "No API key set - see the note below for wynnventory.com or in-game tooltips instead.";
-      return;
-    }
 
     lookupStatus.textContent = "Looking up...";
     try {
-      const res = await fetch(`${API_BASE}/trademarket/items/${encodeURIComponent(item)}`, {
-        headers: { Authorization: `Bearer ${key}` }
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed (${res.status})`);
-      }
+      const res = await fetch(`/api/price?item=${encodeURIComponent(item)}`);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed (${res.status})`);
+      }
       const row = document.createElement("tr");
-      row.innerHTML = `<td>${data.name ?? item}</td><td>${data.lowestAsk ?? "-"}</td><td>${data.highestBid ?? "-"}</td><td>${data.avg7d ?? "-"}</td>`;
+      row.innerHTML = `<td>${data.name ?? item}</td><td>${data.lowest_price ?? "-"}</td><td>${data.highest_price ?? "-"}</td><td>${data.average_price ?? "-"}</td><td>${data.total_count ?? "-"}</td>`;
       resultsBody.appendChild(row);
       resultsTable.hidden = false;
       lookupStatus.textContent = "";
     } catch (err) {
-      lookupStatus.textContent = `Lookup failed: ${err.message}. Confirm the endpoint path with the Wynnventory team's docs, or use wynnventory.com directly.`;
+      lookupStatus.textContent = `Lookup failed: ${err.message}`;
     }
-  });
+  }
+
+  lookupBtn.addEventListener("click", lookup);
+  qInput.addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
 </script>
 </body>
 </html>
