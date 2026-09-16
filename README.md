@@ -105,3 +105,21 @@ only - it can't run the proxy, so it just links to
 [wynnventory.com](https://www.wynnventory.com) and to these instructions.
 In-game tooltips from the Wynntils/Wynnventory mods remain the fastest way to
 check a price while actually trading.
+
+## Trend / prediction page
+
+`dashboard/predict.html` fits a linear regression to price data over time.
+Important caveat: Wynnventory's API only exposes two point-in-time aggregates
+per item (today's live stats, and a rolled-up recent-history aggregate) -
+there is no per-day time series to regress against. So the proxy builds its
+own: every successful `/api/price` lookup (and every watchlist poll, every 15
+minutes) appends a timestamped snapshot to
+`~/.local/share/wynn-dashboard/history.jsonl`. The regression is computed
+from whatever's accumulated there, and its confidence badge (`low` / `medium`
+/ `high`) reflects sample count and time span honestly - it starts `low` and
+earns `high` only after enough real data exists.
+
+Add an item to the watchlist from the trend page (or `GET
+/api/watch/add?item=NAME`) so it keeps collecting data in the background even
+when you're not actively looking things up. This is read-only analysis only -
+no orders are placed or suggested for automated execution.

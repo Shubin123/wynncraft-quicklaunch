@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Price Trend</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3;
+    --card: #ffffff;
+    --text: #1c1c1c;
+    --muted: #666;
+    --border: #e4e2dc;
+    --accent: #2e6b3e;
+    --up: #2e7d32;
+    --down: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+      --up: #66bb6a; --down: #ef5350;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+    --up: #66bb6a; --down: #ef5350;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-block: 24px; padding-inline: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 0.9rem; }
+  nav.tabs { margin-bottom: 16px; }
+  nav.tabs a { color: var(--muted); text-decoration: none; margin-right: 16px; font-size: 0.9rem; }
+  nav.tabs a.active { color: var(--accent); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  input[type="text"] {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 0.95rem;
+  }
+  button {
+    margin-top: 10px; padding: 8px 14px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .status { font-size: 0.85rem; margin-top: 8px; color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 140px; }
+  .stat { text-align: center; padding: 10px; }
+  .stat .label { font-size: 0.75rem; color: var(--muted); }
+  .stat .value { font-size: 1.2rem; font-weight: 700; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  canvas { width: 100%; height: 220px; display: block; }
+  .confidence { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .confidence.low { background: #fff3cd; color: #7a5c00; }
+  .confidence.medium { background: #ffe0b2; color: #7a3c00; }
+  .confidence.high { background: #c8e6c9; color: #1b5e20; }
+  a.link { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Wynncraft Price Trend</h1>
+  <nav class="tabs">
+    <a href="index.html">Price lookup</a>
+    <a href="predict.html" class="active">Trend / prediction</a>
+  </nav>
+  <p class="sub">
+    A linear regression fit over price snapshots this proxy has actually collected over time - not a live
+    market feed. Confidence is low until enough samples accumulate. This is a read-only estimate; it does not
+    place or suggest automated trades.
+  </p>
+
+  <div class="card">
+    <label for="q">Item name</label>
+    <div class="row">
+      <input type="text" id="q" placeholder="e.g. Mithril Leggings" />
+    </div>
+    <div class="row">
+      <button id="analyze">Analyze trend</button>
+      <button id="watch" class="secondary">Add to watchlist</button>
+      <button id="unwatch" class="secondary">Remove from watchlist</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card" id="comparison-card" hidden>
+    <h3 style="margin-top:0">Wynnventory's own today-vs-recent comparison</h3>
+    <div class="row">
+      <div class="stat"><div class="label">Today's average</div><div class="value" id="cmp-today">-</div></div>
+      <div class="stat"><div class="label">Recent-history average</div><div class="value" id="cmp-hist">-</div></div>
+      <div class="stat"><div class="label"># history documents</div><div class="value" id="cmp-docs">-</div></div>
+    </div>
+  </div>
+
+  <div class="card" id="regression-card" hidden>
+    <h3 style="margin-top:0">
+      Local regression <span class="confidence" id="confidence-badge"></span>
+    </h3>
+    <canvas id="chart" width="720" height="220"></canvas>
+    <div class="row">
+      <div class="stat"><div class="label">Samples</div><div class="value" id="reg-n">-</div></div>
+      <div class="stat"><div class="label">Span</div><div class="value" id="reg-span">-</div></div>
+      <div class="stat"><div class="label">Slope / day</div><div class="value" id="reg-slope">-</div></div>
+      <div class="stat"><div class="label">R&sup2;</div><div class="value" id="reg-r2">-</div></div>
+    </div>
+    <div class="row">
+      <div class="stat"><div class="label">Current fit</div><div class="value" id="reg-now">-</div></div>
+      <div class="stat"><div class="label">+1 day</div><div class="value" id="reg-1d">-</div></div>
+      <div class="stat"><div class="label">+7 day</div><div class="value" id="reg-7d">-</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="sub" style="margin:0">
+      No trend yet for an item? Add it to the watchlist so the local proxy polls it periodically (every 15
+      minutes) and builds history in the background, or just keep looking it up on the
+      <a class="link" href="index.html">price lookup</a> page - every successful lookup logs a data point too.
+    </p>
+  </div>
+</div>
+
+<script>
+  const qInput = document.getElementById("q");
+  const statusEl = document.getElementById("status");
+  const comparisonCard = document.getElementById("comparison-card");
+  const regressionCard = document.getElementById("regression-card");
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "-";
+    return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+
+  function drawChart(points, regression) {
+    const canvas = document.getElementById("chart");
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 720;
+    const h = 220;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const style = getComputedStyle(document.body);
+    const border = style.getPropertyValue("--border").trim() || "#ccc";
+    const text = style.getPropertyValue("--muted").trim() || "#888";
+    const accent = style.getPropertyValue("--accent").trim() || "#2e6b3e";
+
+    if (!points.length) {
+      ctx.fillStyle = text;
+      ctx.font = "13px sans-serif";
+      ctx.fillText("No collected data points yet.", 10, h / 2);
+      return;
+    }
+
+    const pad = { l: 50, r: 10, t: 10, b: 24 };
+    const xs = points.map(p => p.ts);
+    const ys = points.map(p => p.lowest_price).filter(v => v !== null && v !== undefined);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys) * 0.98, maxY = Math.max(...ys) * 1.02;
+
+    const xScale = x => pad.l + (maxX === minX ? 0 : (x - minX) / (maxX - minX)) * (w - pad.l - pad.r);
+    const yScale = y => h - pad.b - (maxY === minY ? 0 : (y - minY) / (maxY - minY)) * (h - pad.t - pad.b);
+
+    // axes
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, pad.t);
+    ctx.lineTo(pad.l, h - pad.b);
+    ctx.lineTo(w - pad.r, h - pad.b);
+    ctx.stroke();
+
+    ctx.fillStyle = text;
+    ctx.font = "11px sans-serif";
+    ctx.fillText(fmt(maxY), 4, pad.t + 8);
+    ctx.fillText(fmt(minY), 4, h - pad.b);
+
+    // data points + line
+    ctx.strokeStyle = accent;
+    ctx.fillStyle = accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      if (p.lowest_price === null || p.lowest_price === undefined) return;
+      const x = xScale(p.ts), y = yScale(p.lowest_price);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    points.forEach(p => {
+      if (p.lowest_price === null || p.lowest_price === undefined) return;
+      const x = xScale(p.ts), y = yScale(p.lowest_price);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // regression line
+    if (regression) {
+      const t0 = xs[0];
+      const dayAt = ts => (ts - t0) / 86400;
+      const slope = regression.slope_per_day;
+      const yAt = ts => regression.current_estimate - slope * (dayAt(xs[xs.length - 1]) - dayAt(ts));
+      ctx.strokeStyle = "#e07b00";
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(xScale(minX), yScale(yAt(minX)));
+      ctx.lineTo(xScale(maxX), yScale(yAt(maxX)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  async function analyze() {
+    const item = qInput.value.trim();
+    comparisonCard.hidden = true;
+    regressionCard.hidden = true;
+    if (!item) {
+      statusEl.textContent = "Enter an item name first.";
+      return;
+    }
+    statusEl.textContent = "Analyzing...";
+    try {
+      const [trendRes, histRes] = await Promise.all([
+        fetch(`/api/trend?item=${encodeURIComponent(item)}`),
+        fetch(`/api/history_local?item=${encodeURIComponent(item)}&days=30`),
+      ]);
+      const trend = await trendRes.json();
+      const hist = await histRes.json();
+      if (!trendRes.ok) throw new Error(trend.error || `Request failed (${trendRes.status})`);
+
+      if (trend.wynnventory_comparison) {
+        const c = trend.wynnventory_comparison;
+        document.getElementById("cmp-today").textContent = fmt(c.today_avg);
+        document.getElementById("cmp-hist").textContent = fmt(c.recent_history_avg);
+        document.getElementById("cmp-docs").textContent = c.recent_history_documents ?? "-";
+        comparisonCard.hidden = false;
+      }
+
+      const points = hist.points || [];
+      drawChart(points, trend.regression);
+      regressionCard.hidden = false;
+
+      const badge = document.getElementById("confidence-badge");
+      if (trend.regression) {
+        const r = trend.regression;
+        badge.textContent = r.confidence;
+        badge.className = `confidence ${r.confidence}`;
+        document.getElementById("reg-n").textContent = r.n;
+        document.getElementById("reg-span").textContent = `${r.span_days}d`;
+        document.getElementById("reg-slope").textContent = fmt(r.slope_per_day);
+        document.getElementById("reg-r2").textContent = r.r_squared;
+        document.getElementById("reg-now").textContent = fmt(r.current_estimate);
+        const d1 = document.getElementById("reg-1d");
+        const d7 = document.getElementById("reg-7d");
+        d1.textContent = fmt(r.projected_1d);
+        d7.textContent = fmt(r.projected_7d);
+        d1.className = `value ${r.projected_1d >= r.current_estimate ? "up" : "down"}`;
+        d7.className = `value ${r.projected_7d >= r.current_estimate ? "up" : "down"}`;
+      } else {
+        badge.textContent = "no data";
+        badge.className = "confidence low";
+        ["reg-n", "reg-span", "reg-slope", "reg-r2", "reg-now", "reg-1d", "reg-7d"].forEach(id => {
+          document.getElementById(id).textContent = "-";
+        });
+      }
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = `Failed: ${err.message}`;
+    }
+  }
+
+  async function watch(action) {
+    const item = qInput.value.trim();
+    if (!item) { statusEl.textContent = "Enter an item name first."; return; }
+    const res = await fetch(`/api/watch/${action}?item=${encodeURIComponent(item)}`);
+    const data = await res.json();
+    statusEl.textContent = `Watchlist: ${(data.watchlist || []).join(", ") || "(empty)"}`;
+  }
+
+  document.getElementById("analyze").addEventListener("click", analyze);
+  document.getElementById("watch").addEventListener("click", () => watch("add"));
+  document.getElementById("unwatch").addEventListener("click", () => watch("remove"));
+  qInput.addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+name: Test Wynnventory API
+
+# Manual trigger only - no schedule. This hits a third party's API with a
+# personal dev key, so it only ever runs when explicitly asked for, and does
+# exactly one request per run.
+on:
+  workflow_dispatch:
+    inputs:
+      item:
+        description: "Item name to look up"
+        required: false
+        default: "Comet"
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query trade market price
+        env:
+          WYNNVENTORY_API_KEY: ${{ secrets.WYNNVENTORY_API_KEY }}
+          ITEM: ${{ github.event.inputs.item }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WYNNVENTORY_API_KEY:-}" ]; then
+            echo "::error::WYNNVENTORY_API_KEY secret is not set on this repo."
+            exit 1
+          fi
+
+          encoded_item=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$ITEM")
+
+          http_code=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Accept: application/json" \
+            -H "Authorization: Api-Key ${WYNNVENTORY_API_KEY}" \
+            -H "User-Agent: wynncraft-quicklaunch-ci/1.0" \
+            "https://www.wynnventory.com/api/trademarket/item/${encoded_item}/price")
+
+          echo "HTTP status: $http_code"
+          cat response.json
+          echo
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::Request failed with HTTP $http_code"
+            exit 1
+          fi
