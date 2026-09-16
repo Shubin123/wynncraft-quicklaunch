@@ -123,3 +123,35 @@ Add an item to the watchlist from the trend page (or `GET
 /api/watch/add?item=NAME`) so it keeps collecting data in the background even
 when you're not actively looking things up. This is read-only analysis only -
 no orders are placed or suggested for automated execution.
+
+## Sell slot optimizer
+
+`dashboard/optimize.html` ranks your watchlist and recommends which items to
+buy and list to fill a given number of sell slots within a capital budget
+(defaults: 6 slots, 8 LE / 32,768 emeralds). It's a Thompson-sampling bandit
+over each item's estimated net margin (`sell_estimate * 0.95 - buy_cost`,
+approximating the Trade Market's listing fee), greedily packed into a
+knapsack under the slot and capital constraints.
+
+Two things this deliberately gets right rather than glossing over:
+
+- **Small listing pools get wide uncertainty, not false confidence.** An
+  item's variance is scaled by `1/sqrt(total_count)`, so an item with 2
+  listings can still be picked (bandits should occasionally explore), but
+  won't dominate the ranking the way a 200-listing item's estimate will.
+- **Roll-variance warning.** For gear items, `lowest_price` and
+  `sell_estimate` can come from wildly different stat rolls, not real market
+  inefficiency - you can't buy a bad roll and resell it as a good one. Any
+  item where the sell estimate is 3x+ the buy cost on a thin pool (<30
+  listings) gets flagged `roll_variance_warning: true` and is discounted
+  3x in the ranking rather than trusted at face value.
+
+Record what actually happens after you list something with `GET
+/api/record_outcome?item=NAME&sold=true&margin=123` (or `sold=false` if it
+expired unsold). This is the only way the model improves beyond the raw
+market snapshot - a real, manually-reported outcome, Bayesian-blended into
+that item's estimate for next time (weighted by how many real outcomes have
+been recorded, so early guesses don't overreact to one data point).
+
+This is advisory output only. It recommends what to buy and list; you still
+do the buying and listing yourself, in the real Minecraft client.

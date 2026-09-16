@@ -10,7 +10,9 @@ Key is read, in order, from:
   2. ~/.config/wynn-dashboard/wynnventory.key
 """
 import json
+import math
 import os
+import random
 import threading
 import time
 import urllib.error
@@ -23,9 +25,16 @@ DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 KEY_FILE = Path.home() / ".config" / "wynn-dashboard" / "wynnventory.key"
 DATA_DIR = Path.home() / ".local" / "share" / "wynn-dashboard"
 HISTORY_FILE = DATA_DIR / "history.jsonl"
+BANDIT_STATE_FILE = DATA_DIR / "bandit_state.json"
 WATCHLIST_FILE = Path.home() / ".config" / "wynn-dashboard" / "watchlist.json"
 API_BASE = "https://www.wynnventory.com/api"
 PORT = int(os.environ.get("WYNN_DASHBOARD_PORT", "8123"))
+
+MARKET_FEE = 0.05  # Trade Market's listing fee, deducted from expected proceeds
+# How much we trust a market estimate: variance shrinks as sqrt(total_count),
+# so an item with 2 listings gets a much wider (more cautious) uncertainty
+# band than one with 200 - this is the "small rarity pool" correction.
+CONFIDENCE_REFERENCE_COUNT = 20
 
 # Trade Market prices don't change fast enough to justify hitting the API on
 # every keystroke/retry, and this is a shared personal dev key - being cheap
@@ -59,6 +68,62 @@ def load_api_key() -> str | None:
     if KEY_FILE.exists():
         return KEY_FILE.read_text().strip()
     return None
+
+
+def get_cached_price(item: str, tier: str = "", shiny: str = ""):
+    """Single source of truth for fetching+caching+logging a live price.
+
+    Every caller (manual lookup, trend analysis, watchlist poll) goes
+    through this so a burst of requests for the same item within
+    CACHE_TTL_SECONDS produces exactly one upstream call and one logged
+    history point, not one per call. Returns (status, body, cache_hit).
+    """
+    key = load_api_key()
+    if not key:
+        return 503, {"error": "no API key configured", "hint": f"set WYNNVENTORY_API_KEY or create {KEY_FILE}"}, False
+
+    cache_key = f"{item.lower()}|{tier}|{shiny}"
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache.get(cache_key)
+    if cached and now - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1], cached[2], True
+
+    query = {}
+    if tier:
+        query["tier"] = tier
+    if shiny:
+        query["shiny"] = shiny
+    encoded_item = urllib.parse.quote(item)
+    path = f"trademarket/item/{encoded_item}/price"
+    if query:
+        path += "?" + urllib.parse.urlencode(query)
+
+    status, body = _fetch_wynnventory(path, key)
+
+    if status == 200:
+        with _cache_lock:
+            _cache[cache_key] = (now, status, body)
+        record_snapshot(item, body)
+    return status, body, False
+
+
+def _get_cached_history_aggregate(item: str):
+    key = load_api_key()
+    if not key:
+        return 503, {"error": "no API key configured"}
+    cache_key = f"hist:{item.lower()}"
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache.get(cache_key)
+    if cached and now - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1], cached[2]
+    encoded = urllib.parse.quote(item)
+    status, body = _fetch_wynnventory(f"trademarket/history/{encoded}/price", key)
+    if status == 200:
+        with _cache_lock:
+            _cache[cache_key] = (now, status, body)
+    return status, body
 
 
 def _fetch_wynnventory(path: str, key: str):
@@ -188,6 +253,144 @@ def linear_regression(points: list[dict], metric: str = "lowest_price"):
     }
 
 
+def load_bandit_state() -> dict:
+    if not BANDIT_STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(BANDIT_STATE_FILE.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_bandit_state(state: dict):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    BANDIT_STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+def record_outcome(item: str, sold: bool, realized_margin: float | None):
+    """Bayesian update of an item's posterior from a real, manually-reported
+    outcome (you actually listed it and it either sold or didn't). This is
+    the only way the bandit's belief about an item improves beyond the raw
+    market snapshot - nothing here is inferred automatically."""
+    state = load_bandit_state()
+    key = item.lower()
+    entry = state.get(key, {"n_outcomes": 0, "n_sold": 0, "margin_sum": 0.0, "margin_sumsq": 0.0})
+
+    entry["n_outcomes"] += 1
+    if sold:
+        entry["n_sold"] += 1
+    if realized_margin is not None:
+        entry["margin_sum"] += realized_margin
+        entry["margin_sumsq"] += realized_margin ** 2
+
+    state[key] = entry
+    save_bandit_state(state)
+    return entry
+
+
+def estimate_item(item: str, price_body: dict, capital_remaining: float):
+    """Combine today's market snapshot with any recorded real outcomes into
+    one (mean, std, sell_probability) estimate for this item, honestly
+    widening uncertainty when the listing pool (total_count) is small."""
+    lowest = price_body.get("lowest_price")
+    sell_ref = price_body.get("p50_price") or price_body.get("average_price") or lowest
+    total_count = price_body.get("total_count") or 0
+
+    if lowest is None or sell_ref is None or lowest <= 0:
+        return None
+
+    net_margin = sell_ref * (1 - MARKET_FEE) - lowest
+    roi = net_margin / lowest
+
+    # Market-only confidence: more listings seen today = more trust in the
+    # snapshot. Capped at 1.0 so a huge pool doesn't imply false certainty.
+    market_confidence = min(1.0, total_count / CONFIDENCE_REFERENCE_COUNT)
+    base_std = abs(roi) * 0.5 + 0.05  # never fully certain, even at high confidence
+    std = base_std / math.sqrt(max(market_confidence, 0.05) * CONFIDENCE_REFERENCE_COUNT)
+
+    sell_probability = 0.5 + 0.4 * market_confidence  # naive prior: more listings, more liquid
+
+    outcomes = load_bandit_state().get(item.lower())
+    if outcomes and outcomes["n_outcomes"] > 0:
+        n = outcomes["n_outcomes"]
+        observed_sell_rate = outcomes["n_sold"] / n
+        # Blend market prior with real observed outcomes, weighted by how
+        # many real data points we actually have (small n -> mostly prior).
+        weight_real = min(1.0, n / 5)
+        sell_probability = (1 - weight_real) * sell_probability + weight_real * observed_sell_rate
+        if outcomes["n_sold"] > 0 and outcomes["margin_sum"] != 0:
+            observed_mean_margin = outcomes["margin_sum"] / outcomes["n_sold"]
+            net_margin = (1 - weight_real) * net_margin + weight_real * observed_mean_margin
+            std = std * (1 - weight_real * 0.5)  # real outcomes tighten the estimate somewhat
+
+    # For gear items, lowest/p50/average can come from listings with very
+    # different stat rolls, not just supply-and-demand - a huge spread often
+    # means "someone listed a bad roll cheap and someone else a great roll
+    # high," which you can't actually capture by buying low and reselling
+    # high (you get whatever roll you bought). Flag it rather than trust it.
+    roll_variance_warning = sell_ref > lowest * 3 and total_count < 30
+
+    return {
+        "item": item,
+        "buy_cost": lowest,
+        "sell_estimate": sell_ref,
+        "net_margin": round(net_margin, 2),
+        "roi": round(net_margin / lowest, 4),
+        "total_count": total_count,
+        "market_confidence": round(market_confidence, 2),
+        "sell_probability": round(sell_probability, 2),
+        "roll_variance_warning": roll_variance_warning,
+        "_std": std,
+        "affordable": lowest <= capital_remaining,
+    }
+
+
+def thompson_sample(estimate: dict) -> float:
+    """One posterior draw of expected net margin, used to rank items for
+    this run. Wider std (thin listing pool / little real feedback) means a
+    noisier draw, so thin-pool items occasionally get explored rather than
+    permanently ignored, without being blindly trusted either."""
+    sampled_roi = random.gauss(estimate["roi"], estimate["_std"])
+    value = sampled_roi * estimate["buy_cost"] * estimate["sell_probability"]
+    if estimate.get("roll_variance_warning"):
+        # Don't let an unverifiable roll-driven spread dominate the ranking;
+        # still eligible to be picked, just not trusted at face value.
+        value *= 0.3
+    return value
+
+
+def optimize_slots(estimates: list[dict], capital: float, slots: int) -> dict:
+    """Greedy knapsack over one Thompson-sampled ranking: fill up to `slots`
+    sell slots with distinct items, without exceeding `capital` total spend.
+    This is advisory output only - it recommends what to buy and list, it
+    does not buy or list anything itself."""
+    scored = []
+    for e in estimates:
+        if not e["affordable"]:
+            continue
+        scored.append((thompson_sample(e), e))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    picks = []
+    remaining = capital
+    for sampled_value, e in scored:
+        if len(picks) >= slots:
+            break
+        if e["buy_cost"] > remaining:
+            continue
+        picks.append({**e, "sampled_expected_value": round(sampled_value, 2)})
+        remaining -= e["buy_cost"]
+
+    return {
+        "capital": capital,
+        "slots": slots,
+        "picks": picks,
+        "capital_spent": round(capital - remaining, 2),
+        "capital_remaining": round(remaining, 2),
+        "slots_filled": len(picks),
+    }
+
+
 def load_watchlist() -> list[str]:
     with _watchlist_lock:
         if not WATCHLIST_FILE.exists():
@@ -211,14 +414,10 @@ def watchlist_poll_loop():
     beyond one request per item per poll interval."""
     while True:
         time.sleep(WATCHLIST_POLL_INTERVAL_SECONDS)
-        key = load_api_key()
-        if not key:
+        if not load_api_key():
             continue
         for item in load_watchlist():
-            encoded = urllib.parse.quote(item)
-            status, body = _fetch_wynnventory(f"trademarket/item/{encoded}/price", key)
-            if status == 200:
-                record_snapshot(item, body)
+            get_cached_price(item)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -235,6 +434,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/watchlist": self._handle_watchlist_get,
             "/api/watch/add": self._handle_watch_add,
             "/api/watch/remove": self._handle_watch_remove,
+            "/api/optimize": self._handle_optimize,
+            "/api/record_outcome": self._handle_record_outcome,
         }
         handler = routes.get(parsed.path)
         if handler:
@@ -250,64 +451,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "missing 'item' query param"})
             return
 
-        key = load_api_key()
-        if not key:
-            self._json(
-                503,
-                {
-                    "error": "no API key configured",
-                    "hint": f"set WYNNVENTORY_API_KEY or create {KEY_FILE}",
-                },
-            )
-            return
-
-        query = {}
-        if params.get("tier"):
-            query["tier"] = params["tier"][0]
-        if params.get("shiny"):
-            query["shiny"] = params["shiny"][0]
-
-        cache_key = f"{item.lower()}|{query.get('tier','')}|{query.get('shiny','')}"
-        now = time.monotonic()
-        with _cache_lock:
-            cached = _cache.get(cache_key)
-        if cached and now - cached[0] < CACHE_TTL_SECONDS:
-            self._json(cached[1], cached[2], cache_hit=True)
-            return
-
-        encoded_item = urllib.parse.quote(item)
-        url = f"{API_BASE}/trademarket/item/{encoded_item}/price"
-        if query:
-            url += "?" + urllib.parse.urlencode(query)
-
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Api-Key {key}",
-                # Wynnventory's edge (Cloudflare) blocks the default
-                # "Python-urllib/x.y" user agent as a bot signature.
-                "User-Agent": "wynncraft-quicklaunch-dashboard/1.0",
-            },
-        )
-        _throttle()
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                body = json.loads(resp.read())
-                status = resp.status
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                status, body = 404, {"error": f"no listings found for '{item}'"}
-            else:
-                status, body = e.code, {"error": f"upstream error ({e.code})"}
-        except Exception as e:
-            status, body = 502, {"error": f"request to Wynnventory failed: {e}"}
-
-        if status == 200:
-            with _cache_lock:
-                _cache[cache_key] = (now, status, body)
-            record_snapshot(item, body)
-        self._json(status, body)
+        tier = (params.get("tier") or [""])[0]
+        shiny = (params.get("shiny") or [""])[0]
+        status, body, cache_hit = get_cached_price(item, tier, shiny)
+        self._json(status, body, cache_hit=cache_hit)
 
     def _handle_history_local(self, parsed):
         params = urllib.parse.parse_qs(parsed.query)
@@ -335,14 +482,13 @@ class Handler(BaseHTTPRequestHandler):
         # Wynnventory's own two aggregates (today vs a rolled-up recent
         # window) give an immediate directional signal even with zero local
         # history yet, while the regression above needs accumulated samples.
-        key = load_api_key()
-        if key:
-            encoded = urllib.parse.quote(item)
-            live_status, live_body = _fetch_wynnventory(f"trademarket/item/{encoded}/price", key)
-            hist_status, hist_body = _fetch_wynnventory(f"trademarket/history/{encoded}/price", key)
-            if live_status == 200:
-                record_snapshot(item, live_body)
-            if live_status == 200 and hist_status == 200:
+        # Both go through the same cache as manual lookups (get_cached_price
+        # for live, a matching cache for the history aggregate) so repeated
+        # /api/trend calls within CACHE_TTL_SECONDS don't hit the upstream API
+        # or log duplicate snapshots each time.
+        live_status, live_body, _ = get_cached_price(item)
+        hist_status, hist_body = _get_cached_history_aggregate(item)
+        if live_status == 200 and hist_status == 200:
                 result["wynnventory_comparison"] = {
                     "today_avg": live_body.get("average_price"),
                     "recent_history_avg": hist_body.get("average_price"),
@@ -354,6 +500,54 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._json(200, result)
+
+    def _handle_optimize(self, parsed):
+        params = urllib.parse.parse_qs(parsed.query)
+        try:
+            capital = float((params.get("capital") or ["32768"])[0])  # default 8 LE
+            slots = int((params.get("slots") or ["6"])[0])
+        except ValueError:
+            self._json(400, {"error": "capital must be a number (emeralds), slots an integer"})
+            return
+
+        items_param = (params.get("items") or [""])[0]
+        candidates = [i.strip() for i in items_param.split(",") if i.strip()] or load_watchlist()
+        if not candidates:
+            self._json(400, {"error": "no candidate items - pass ?items=a,b,c or populate the watchlist first"})
+            return
+
+        estimates = []
+        skipped = []
+        for item in candidates:
+            status, body, _ = get_cached_price(item)
+            if status != 200:
+                skipped.append({"item": item, "reason": body.get("error", f"status {status}")})
+                continue
+            est = estimate_item(item, body, capital)
+            if est is None:
+                skipped.append({"item": item, "reason": "incomplete price data"})
+                continue
+            estimates.append(est)
+
+        result = optimize_slots(estimates, capital, slots)
+        result["skipped"] = skipped
+        result["candidates_considered"] = len(estimates)
+        # drop the internal-only std field before returning
+        for pick in result["picks"]:
+            pick.pop("_std", None)
+        self._json(200, result)
+
+    def _handle_record_outcome(self, parsed):
+        params = urllib.parse.parse_qs(parsed.query)
+        item = (params.get("item") or [""])[0].strip()
+        if not item:
+            self._json(400, {"error": "missing 'item' query param"})
+            return
+        sold = (params.get("sold") or ["false"])[0].lower() == "true"
+        margin_param = (params.get("margin") or [None])[0]
+        margin = float(margin_param) if margin_param not in (None, "") else None
+        entry = record_outcome(item, sold, margin)
+        self._json(200, {"item": item, "state": entry})
 
     def _handle_watchlist_get(self, parsed):
         self._json(200, {"watchlist": load_watchlist()})

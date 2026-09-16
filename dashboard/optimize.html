@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Sell Slot Optimizer</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3; --card: #ffffff; --text: #1c1c1c; --muted: #666; --border: #e4e2dc; --accent: #2e6b3e;
+    --warn-bg: #fff3cd; --warn-text: #7a5c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+      --warn-bg: #4d3b00; --warn-text: #ffd666;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+    --warn-bg: #4d3b00; --warn-text: #ffd666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-block: 24px; padding-inline: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 0.9rem; }
+  nav.tabs { margin-bottom: 16px; }
+  nav.tabs a { color: var(--muted); text-decoration: none; margin-right: 16px; font-size: 0.9rem; }
+  nav.tabs a.active { color: var(--accent); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 0.95rem;
+  }
+  button {
+    margin-top: 10px; padding: 8px 14px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button.small { padding: 4px 10px; font-size: 0.8rem; margin-top: 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 140px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .warn { display: inline-block; background: var(--warn-bg); color: var(--warn-text); padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }
+  .status { font-size: 0.85rem; margin-top: 8px; color: var(--muted); }
+  .summary { font-size: 0.9rem; margin-bottom: 12px; }
+  a.link { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sell Slot Optimizer</h1>
+  <nav class="tabs">
+    <a href="index.html">Price lookup</a>
+    <a href="predict.html">Trend / prediction</a>
+    <a href="optimize.html" class="active">Slot optimizer</a>
+  </nav>
+  <p class="sub">
+    Advisory allocation only - ranks watchlist items by expected margin (Thompson-sampled, with uncertainty
+    widened for items with few listings) and greedily fills your sell slots within budget. It recommends what
+    to buy and list; you still do the buying and listing yourself in-game.
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="capital-le">Starting capital (LE)</label>
+        <input type="number" id="capital-le" value="8" step="0.1" />
+      </div>
+      <div>
+        <label for="slots">Sell slots</label>
+        <input type="number" id="slots" value="6" min="1" max="21" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="items">Candidate items (blank = use watchlist)</label>
+        <input type="text" id="items" placeholder="Comet, Mithril Leggings, ..." />
+      </div>
+    </div>
+    <button id="run">Run optimizer</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card" id="results-card" hidden>
+    <div class="summary" id="summary"></div>
+    <table id="results-table">
+      <thead>
+        <tr>
+          <th>Item</th><th>Buy cost</th><th>Sell est.</th><th>Net margin</th><th>ROI</th>
+          <th># listings</th><th>Sell prob.</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Record a real outcome</h3>
+    <p class="sub">After you actually list and it sells (or expires unsold), log it here - this is the only
+      way the model learns beyond today's market snapshot.</p>
+    <div class="row">
+      <input type="text" id="outcome-item" placeholder="Item name" />
+      <select id="outcome-sold" style="padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <option value="true">Sold</option>
+        <option value="false">Didn't sell / expired</option>
+      </select>
+      <input type="number" id="outcome-margin" placeholder="Actual net margin (E, optional)" />
+    </div>
+    <button id="record" class="small">Record outcome</button>
+    <div class="status" id="outcome-status"></div>
+  </div>
+</div>
+
+<script>
+  const EMERALDS_PER_LE = 4096;
+
+  function fmt(n) {
+    if (n === null || n === undefined) return "-";
+    return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+
+  async function run() {
+    const le = parseFloat(document.getElementById("capital-le").value || "8");
+    const slots = parseInt(document.getElementById("slots").value || "6", 10);
+    const items = document.getElementById("items").value.trim();
+    const capital = Math.round(le * EMERALDS_PER_LE);
+    const statusEl = document.getElementById("status");
+    const card = document.getElementById("results-card");
+
+    statusEl.textContent = "Running...";
+    card.hidden = true;
+
+    const url = new URL("/api/optimize", location.origin);
+    url.searchParams.set("capital", capital);
+    url.searchParams.set("slots", slots);
+    if (items) url.searchParams.set("items", items);
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+
+      document.getElementById("summary").innerHTML =
+        `Considered <b>${data.candidates_considered}</b> items, filled <b>${data.slots_filled}/${data.slots}</b> slots. ` +
+        `Spent <b>${fmt(data.capital_spent)}</b> E, <b>${fmt(data.capital_remaining)}</b> E remaining ` +
+        `(${fmt(data.capital_remaining / EMERALDS_PER_LE)} LE).` +
+        (data.skipped.length ? `<br><span style="color:var(--muted)">Skipped: ${data.skipped.map(s => `${s.item} (${s.reason})`).join(", ")}</span>` : "");
+
+      const tbody = document.querySelector("#results-table tbody");
+      tbody.innerHTML = "";
+      data.picks.forEach(p => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${p.item}</td>
+          <td>${fmt(p.buy_cost)}</td>
+          <td>${fmt(p.sell_estimate)}</td>
+          <td>${fmt(p.net_margin)}</td>
+          <td>${(p.roi * 100).toFixed(1)}%</td>
+          <td>${p.total_count}</td>
+          <td>${(p.sell_probability * 100).toFixed(0)}%</td>
+          <td>${p.roll_variance_warning ? '<span class="warn">verify roll spread</span>' : ""}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      card.hidden = false;
+      statusEl.textContent = "";
+    } catch (err) {
+      statusEl.textContent = `Failed: ${err.message}`;
+    }
+  }
+
+  async function recordOutcome() {
+    const item = document.getElementById("outcome-item").value.trim();
+    const sold = document.getElementById("outcome-sold").value;
+    const margin = document.getElementById("outcome-margin").value.trim();
+    const statusEl = document.getElementById("outcome-status");
+    if (!item) { statusEl.textContent = "Enter an item name first."; return; }
+
+    const url = new URL("/api/record_outcome", location.origin);
+    url.searchParams.set("item", item);
+    url.searchParams.set("sold", sold);
+    if (margin) url.searchParams.set("margin", margin);
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      statusEl.textContent = `Recorded. ${item} now has ${data.state.n_outcomes} outcome(s) logged.`;
+    } catch (err) {
+      statusEl.textContent = `Failed: ${err.message}`;
+    }
+  }
+
+  document.getElementById("run").addEventListener("click", run);
+  document.getElementById("record").addEventListener("click", recordOutcome);
+</script>
+</body>
+</html>
