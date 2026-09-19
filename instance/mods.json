@@ -1,0 +1,40 @@
+{
+  "minecraft_version": "1.21.11",
+  "mods": [
+    {
+      "id": "fabric-api",
+      "filename": "fabric-api-0.141.6+1.21.11.jar",
+      "version": "0.141.6+1.21.11",
+      "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/6qAuTtLR/fabric-api-0.141.6%2B1.21.11.jar",
+      "sha512": "852d3682c4f353fd0ca86546af8578513e8bcf628377fa9d49c556bc59c5024c69ab56c92fc6dfba11fed19e4316a3f5636e7e07fd3d96f7043b531aef59b637"
+    },
+    {
+      "id": "cloth-config",
+      "filename": "cloth-config-21.11.153-fabric.jar",
+      "version": "21.11.153",
+      "url": "https://cdn.modrinth.com/data/9s6osm5g/versions/xuX40TN5/cloth-config-21.11.153-fabric.jar",
+      "sha512": "8f455489d4b71069e998568cf4e1450116f4360a4eb481cd89117f629c6883164886cf63ca08ac4fc929dd13d1112152755a6216d4a1498ee6406ef102093e51"
+    },
+    {
+      "id": "modmenu",
+      "filename": "modmenu-17.0.1-beta.1.jar",
+      "version": "17.0.1-beta.1",
+      "url": "https://cdn.modrinth.com/data/mOgUt4GM/versions/j2vTurvl/modmenu-17.0.1-beta.1.jar",
+      "sha512": "41dfe92fd56928974635e90579eb08aee056ebfce52b80658e4a12288a57d18ec909107e3f3d1af5eae2f98e55fb16aa929e67f47d8aa5040fc44c548cadf3a2"
+    },
+    {
+      "id": "wynntils",
+      "filename": "wynntils-4.2.11-fabric+MC-1.21.11.jar",
+      "version": "4.2.11",
+      "url": "https://cdn.modrinth.com/data/dU5Gb9Ab/versions/c0EUB5Np/wynntils-4.2.11-fabric%2BMC-1.21.11.jar",
+      "sha512": "a20d9d9c4f44f6b665a2800e94242b74c947d2c8f585256f0ed7abd991040e7930474645ed7df87eaa27540113cb72dc67883ce93a6ebe0617a0c5968c70e676"
+    },
+    {
+      "id": "wynnventory",
+      "filename": "wynnventory-2.2.4-fabric-1.21.11.jar",
+      "version": "2.2.4",
+      "url": "https://cdn.modrinth.com/data/CORVJbiT/versions/pOBUOPAI/wynnventory-2.2.4-fabric-1.21.11.jar",
+      "sha512": "b1fb0143dd7dbc91af54835410edafc1d11d32255466d93cf96e1d32d467cab9d76ce0543702af5f4f6d53b9de481c70e53cdb654d410559a72b56ac62b908c1"
+    }
+  ]
+}

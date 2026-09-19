@@ -29,7 +29,9 @@ PRISM_BIN=""
 if command -v prismlauncher >/dev/null 2>&1; then
   PRISM_BIN="prismlauncher"
 elif [ "$OS" = "Darwin" ]; then
-  if [ -x "/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" ]; then
+  if [ -x "/Applications/Prism Launcher.app/Contents/MacOS/Prism Launcher" ]; then
+    PRISM_BIN="/Applications/Prism Launcher.app/Contents/MacOS/Prism Launcher"
+  elif [ -x "/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" ]; then
     PRISM_BIN="/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher"
   elif [ -x "/opt/homebrew/bin/prismlauncher" ]; then
     PRISM_BIN="/opt/homebrew/bin/prismlauncher"
@@ -54,39 +56,64 @@ echo "==> Copying instance config"
 cp "$REPO_DIR/instance/mmc-pack.json" "$INSTANCE_DIR/mmc-pack.json"
 cp "$REPO_DIR/instance/instance.cfg" "$INSTANCE_DIR/instance.cfg"
 
-MODS=(
-  "fabric-api|https://cdn.modrinth.com/data/P7dR8mSH/versions/6qAuTtLR/fabric-api-0.141.6%2B1.21.11.jar"
-  "cloth-config|https://cdn.modrinth.com/data/9s6osm5g/versions/xuX40TN5/cloth-config-21.11.153-fabric.jar"
-  "modmenu|https://cdn.modrinth.com/data/mOgUt4GM/versions/j2vTurvl/modmenu-17.0.1-beta.1.jar"
-  "wynntils|https://cdn.modrinth.com/data/dU5Gb9Ab/versions/c0EUB5Np/wynntils-4.2.11-fabric%2BMC-1.21.11.jar"
-  "wynnventory|https://cdn.modrinth.com/data/CORVJbiT/versions/pOBUOPAI/wynnventory-2.2.4-fabric-1.21.11.jar"
-)
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to read the pinned mod manifest." >&2
+  exit 1
+fi
 
-echo "==> Downloading mods (Minecraft 1.21.11, Fabric)"
-for entry in "${MODS[@]}"; do
-  name="${entry%%|*}"
-  url="${entry#*|}"
-  echo "    - $name"
-  curl -sL -o "$MODS_DIR/$name.jar" "$url"
-done
+sha512_file() {
+  if command -v sha512sum >/dev/null 2>&1; then
+    sha512sum "$1" | awk '{print $1}'
+  else
+    shasum -a 512 "$1" | awk '{print $1}'
+  fi
+}
+
+echo "==> Downloading and verifying pinned Fabric mods (Minecraft 1.21.11)"
+while IFS=$'\t' read -r mod_id filename url expected_sha512; do
+  target="$MODS_DIR/$filename"
+  temp_file="$(mktemp "$MODS_DIR/.${mod_id}.XXXXXX")"
+  echo "    - $mod_id"
+  if ! curl --fail --location --retry 3 --connect-timeout 15 --silent --show-error \
+      --output "$temp_file" "$url"; then
+    rm -f "$temp_file"
+    echo "Failed to download $mod_id." >&2
+    exit 1
+  fi
+  actual_sha512="$(sha512_file "$temp_file")"
+  if [[ "$actual_sha512" != "$expected_sha512" ]]; then
+    rm -f "$temp_file"
+    echo "Checksum mismatch for $mod_id; refusing to install it." >&2
+    exit 1
+  fi
+  mv "$temp_file" "$target"
+
+  # Earlier versions of this installer used stable generic filenames. Remove
+  # only that installer-owned legacy file once its verified replacement exists;
+  # custom user-installed mods are left untouched.
+  legacy_file="$MODS_DIR/$mod_id.jar"
+  if [[ "$legacy_file" != "$target" && -f "$legacy_file" ]]; then
+    rm -f "$legacy_file"
+    echo "      removed legacy installer copy: $(basename "$legacy_file")"
+  fi
+done < <(python3 - "$REPO_DIR/instance/mods.json" <<'PY'
+import json
+import sys
+
+for mod in json.load(open(sys.argv[1], encoding="utf-8"))["mods"]:
+    print("\t".join((mod["id"], mod["filename"], mod["url"], mod["sha512"])))
+PY
+)
 
 # Install Desktop Quick-Launch per OS
 if [ "$OS" = "Darwin" ]; then
   echo "==> Creating macOS quick-launch shortcut on Desktop"
   SHORTCUT="$HOME/Desktop/Wynncraft Quicklaunch.command"
-  cat > "$SHORTCUT" << 'MACOSEOF'
-#!/usr/bin/env bash
-# macOS Quick-Launch straight into play.wynncraft.com
-PRISM_BIN="prismlauncher"
-if ! command -v prismlauncher >/dev/null 2>&1; then
-  if [ -x "/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher" ]; then
-    PRISM_BIN="/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher"
-  elif [ -x "/opt/homebrew/bin/prismlauncher" ]; then
-    PRISM_BIN="/opt/homebrew/bin/prismlauncher"
-  fi
-fi
-"$PRISM_BIN" -l "Wynncraft-1.21.11" -s play.wynncraft.com
-MACOSEOF
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf 'export PRISM_DIR=%q\n' "$PRISM_DIR"
+    printf 'exec %q\n' "$REPO_DIR/scripts/launch-prism.sh"
+  } > "$SHORTCUT"
   chmod +x "$SHORTCUT"
   echo "    Created $SHORTCUT"
 else
@@ -98,13 +125,12 @@ fi
 
 echo "==> Setting up Mineflayer Wynncraft Web Bot dependencies"
 if [ -d "$REPO_DIR/mineflayer-wynn" ]; then
-  echo "    Installing local dependencies in mineflayer-wynn..."
-  (cd "$REPO_DIR/mineflayer-wynn" && npm install --no-audit --no-fund) || true
+  echo "    Mineflayer dependencies are installed by scripts/setup.sh (Node 22+ required)."
+  echo "    For a direct installation, run: (cd mineflayer-wynn && npm ci)"
 fi
 
-if [ -f "$REPO_DIR/requirements.txt" ] && command -v pip3 >/dev/null 2>&1; then
-  echo "    Installing Python dependencies (Pillow)..."
-  pip3 install -q -r "$REPO_DIR/requirements.txt" || true
+if [ -f "$REPO_DIR/requirements.txt" ]; then
+  echo "    Python dependencies are installed into .venv by scripts/setup.sh."
 fi
 
 chmod +x "$REPO_DIR/scripts/wynn_bot_server.js" "$REPO_DIR/scripts/launch_mineflayer.sh" 2>/dev/null || true
@@ -127,4 +153,3 @@ else
   echo "     - prismlauncher -l \"$INSTANCE_NAME\" -s play.wynncraft.com"
 fi
 echo "     This skips the launcher UI and joins play.wynncraft.com directly."
-

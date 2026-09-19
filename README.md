@@ -31,7 +31,11 @@ Prerequisites:
 - [Prism Launcher](https://prismlauncher.org) installed with a Microsoft/Minecraft account added.
   - **macOS**: `brew install --cask prismlauncher` (or download the DMG)
   - **Linux**: `pacman -S prismlauncher` (or your package manager / Flatpak)
-- Node.js `v20+` and Python `3.10+`
+- Node.js `v22+` and Python `3.10+`. Mineflayer 4.39.0, used by this repo,
+  requires Node 22 or newer.
+
+Setup creates `.venv/` for the optional Pillow dependency. This keeps the
+project separate from Homebrew's externally managed Python on macOS.
 
 ### One-Command Setup
 

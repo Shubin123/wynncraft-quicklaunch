@@ -10,8 +10,10 @@
     "bot": "node scripts/wynn_bot_server.js",
     "dashboard": "python3 scripts/wynn_price_server.py",
     "textures": "python3 scripts/apply_wynn_textures.py",
-    "test": "bash tests/run_all_tests.sh",
-    "postinstall": "cd mineflayer-wynn && npm install"
+    "mineflayer:check": "node scripts/mineflayer/check.mjs",
+    "preflight": "bash scripts/preflight.sh --node",
+    "test": "bash tests/run_all_tests.sh && bash scripts/check.sh",
+    "postinstall": "cd mineflayer-wynn && npm ci --no-audit --no-fund"
   },
   "keywords": [
     "wynncraft",

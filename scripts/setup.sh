@@ -27,6 +27,17 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 NODE_VER="$(node -v)"
+NODE_MAJOR="${NODE_VER#v}"
+NODE_MAJOR="${NODE_MAJOR%%.*}"
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "❌ Node.js 22 or newer is required by Mineflayer 4.39.0 (found $NODE_VER)."
+  if [ "$OS" = "Darwin" ]; then
+    echo "   Upgrade via Homebrew: brew install node"
+  else
+    echo "   Upgrade Node.js through your package manager or a supported Node version manager."
+  fi
+  exit 1
+fi
 echo "✔ Node.js: $NODE_VER"
 
 # 2. Check Python 3
@@ -69,7 +80,7 @@ echo ""
 # 4. Install Node dependencies
 echo "==> [1/4] Installing Node.js bot dependencies..."
 if [ -d "$REPO_DIR/mineflayer-wynn" ]; then
-  (cd "$REPO_DIR/mineflayer-wynn" && npm install --no-audit --no-fund)
+  (cd "$REPO_DIR/mineflayer-wynn" && npm ci --no-audit --no-fund)
 fi
 echo "✔ Node dependencies installed."
 echo ""
@@ -77,7 +88,13 @@ echo ""
 # 5. Install Python dependencies
 echo "==> [2/4] Installing Python dependencies (Pillow)..."
 if [ -f "$REPO_DIR/requirements.txt" ]; then
-  pip3 install -q -r "$REPO_DIR/requirements.txt" || python3 -m pip install -q -r "$REPO_DIR/requirements.txt"
+  VENV_DIR="${VENV_DIR:-$REPO_DIR/.venv}"
+  if [ ! -x "$VENV_DIR/bin/python" ]; then
+    echo "    Creating repository virtual environment at $VENV_DIR"
+    python3 -m venv "$VENV_DIR"
+  fi
+  "$VENV_DIR/bin/python" -m pip install --upgrade pip --quiet
+  "$VENV_DIR/bin/python" -m pip install --quiet -r "$REPO_DIR/requirements.txt"
 fi
 echo "✔ Python dependencies installed."
 echo ""
@@ -90,7 +107,11 @@ echo ""
 # 7. Apply Wynncraft Textures to 3D Viewer
 echo "==> [4/4] Deploying official Wynncraft textures to 3D viewer..."
 if [ -f "$REPO_DIR/assets/wynnpack/wynn_rp.zip" ]; then
-  python3 "$REPO_DIR/scripts/apply_wynn_textures.py" || echo "⚠️ Textures deployment completed with warnings."
+  PYTHON_FOR_TEXTURES="${VENV_DIR:-$REPO_DIR/.venv}/bin/python"
+  if [ ! -x "$PYTHON_FOR_TEXTURES" ]; then
+    PYTHON_FOR_TEXTURES="python3"
+  fi
+  "$PYTHON_FOR_TEXTURES" "$REPO_DIR/scripts/apply_wynn_textures.py" || echo "⚠️ Textures deployment completed with warnings."
 else
   echo "ℹ️ assets/wynnpack/wynn_rp.zip not found; skipping viewer texture pack."
 fi
