@@ -1,0 +1,1965 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Bot Controller & AI Insights</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-base: #0b0f14;
+    --bg-surface: #121820;
+    --bg-card: rgba(18, 24, 34, 0.85);
+    --bg-card-hover: rgba(24, 32, 46, 0.95);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-accent: rgba(56, 161, 105, 0.4);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #22c55e;
+    --accent-hover: #16a34a;
+    --accent-glow: rgba(34, 197, 94, 0.25);
+    --cyan: #06b6d4;
+    --cyan-glow: rgba(6, 182, 212, 0.25);
+    --purple: #a855f7;
+    --purple-glow: rgba(168, 85, 247, 0.25);
+    --gold: #f59e0b;
+    --gold-glow: rgba(245, 158, 11, 0.25);
+    --danger: #ef4444;
+    --danger-hover: #dc2626;
+    --badge-bg: rgba(255, 255, 255, 0.06);
+    --chat-bg: #070a0e;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-base);
+    color: var(--text);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* Expansive Modern Grid Shell */
+  .wrap {
+    max-width: 1720px;
+    margin: 0 auto;
+    padding: 16px 20px 40px 20px;
+  }
+
+  header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  h1 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-badge {
+    background: linear-gradient(135deg, #15803d, #22c55e);
+    color: #fff;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 10px;
+  }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
+  }
+  nav a:hover { color: #fff; }
+  nav a.active { color: var(--accent); font-weight: 600; }
+
+  /* Reactive Action Bar Banner (Global Ticker) */
+  .actionbar-ticker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.14), rgba(34, 197, 94, 0.12));
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.08);
+  }
+  .ticker-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #f59e0b;
+    box-shadow: 0 0 10px #f59e0b;
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+  }
+
+  /* =====================================================
+     GRID LAYOUT — columnar-aligned rows, user-resizable
+  ===================================================== */
+  .node-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* A grid row groups panels sharing horizontal space */
+  .grid-row {
+    display: grid;
+    gap: 16px;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  /* Default row column ratios (overridden by JS on drag) */
+  .grid-row-4-8  { grid-template-columns: var(--gcols-r1, 4fr 8fr); }
+  .grid-row-7-5  { grid-template-columns: var(--gcols-r2, 7fr 5fr); }
+  .grid-row-7-5b { grid-template-columns: var(--gcols-r3, 7fr 5fr); }
+  .grid-row-12   { grid-template-columns: 1fr; }
+
+  @media (max-width: 1100px) {
+    .grid-row-4-8, .grid-row-7-5, .grid-row-7-5b {
+      grid-template-columns: 1fr;
+    }
+    .col-resizer { display: none !important; }
+  }
+
+  /* Panel wrapper provides relative context for resizer handle */
+  .panel-wrap {
+    position: relative;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-wrap .node-card { flex: 1; }
+
+  /* Drag-resize handle between columns */
+  .col-resizer {
+    display: flex;
+    position: absolute;
+    top: 0;
+    right: -9px;
+    width: 18px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.18s;
+  }
+  .col-resizer::before {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 44px;
+    background: var(--accent);
+    border-radius: 2px;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .grid-row:hover .col-resizer { opacity: 0.45; }
+  .col-resizer:hover, .col-resizer.dragging { opacity: 1 !important; }
+
+  /* Vertical resize handle on resizable log panels */
+  .v-resizable {
+    resize: vertical;
+    overflow: auto;
+    min-height: 140px;
+  }
+
+  /* Modular Node Cards */
+  .node-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .node-card:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  .node-card.accent-card {
+    border-top: 3px solid var(--accent);
+  }
+  .node-card.cyan-card {
+    border-top: 3px solid var(--cyan);
+  }
+  .node-card.purple-card {
+    border-top: 3px solid var(--purple);
+  }
+  .node-card.gold-card {
+    border-top: 3px solid var(--gold);
+  }
+
+  .node-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .node-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #fff;
+  }
+
+  /* Badges & Dots */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 14px;
+    font-size: 0.73rem;
+    font-weight: 600;
+    background: var(--badge-bg);
+    border: 1px solid var(--border);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-green { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  .dot-red { background: #ef4444; }
+  .dot-yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+  .dot-cyan { background: #06b6d4; box-shadow: 0 0 6px #06b6d4; }
+
+  /* Buttons & Inputs */
+  button {
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  button:hover { background: var(--accent-hover); box-shadow: 0 0 10px var(--accent-glow); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+  button.danger { background: var(--danger); }
+  button.danger:hover { background: var(--danger-hover); box-shadow: 0 0 10px rgba(239, 68, 68, 0.35); }
+  button.secondary { background: var(--badge-bg); color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); }
+  button.cyan { background: #0891b2; color: #fff; }
+  button.cyan:hover { background: #06b6d4; box-shadow: 0 0 10px var(--cyan-glow); }
+  button.purple { background: #7c3aed; color: #fff; }
+  button.purple:hover { background: #8b5cf6; box-shadow: 0 0 10px var(--purple-glow); }
+  button.small { padding: 4px 8px; font-size: 0.75rem; }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.4);
+    color: var(--text);
+    font-size: 0.85rem;
+    transition: border-color 0.15s;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  label { display: block; font-size: 0.76rem; margin-bottom: 4px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Vitals Stat Tiles */
+  .vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-tile {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .stat-val { font-size: 1.15rem; font-weight: 700; color: #fff; display: flex; justify-content: space-between; align-items: baseline; }
+  .stat-lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .meter-bar-wrap { height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .meter-bar { height: 100%; transition: width 0.3s ease; }
+
+  /* Chat Box */
+  .chat-box {
+    flex: 1;
+    min-height: 280px;
+    max-height: 380px;
+    background: var(--chat-bg);
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border: 1px solid var(--border);
+  }
+  .chat-msg { line-height: 1.45; word-break: break-word; }
+  .chat-time { color: #64748b; font-size: 0.72rem; margin-right: 6px; }
+  .chat-tag-dialogue { color: #fbbf24; font-weight: 600; }
+  .chat-tag-quest { color: #38bdf8; font-weight: 600; }
+  .chat-tag-market { color: #4ade80; font-weight: 600; }
+  .chat-tag-player { color: #c084fc; font-weight: 600; }
+  .chat-tag-system { color: #94a3b8; font-style: italic; }
+  .chat-tag-actionbar { color: #f59e0b; opacity: 0.9; }
+  .chat-sender { font-weight: 600; margin-right: 4px; }
+
+  /* 3D Viewer */
+  .viewer-wrap {
+    width: 100%;
+    height: 360px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #000;
+  }
+  .viewer-wrap iframe { width: 100%; height: 100%; border: none; }
+
+  /* Chips */
+  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 3px 8px;
+    font-size: 0.74rem;
+    cursor: pointer;
+    color: var(--text);
+    font-weight: 500;
+    transition: all 0.12s;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(34, 197, 94, 0.08); }
+
+  /* Minecraft Container Grid */
+  .mc-grid {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(32px, 1fr));
+    gap: 4px;
+    background: #30343a;
+    padding: 8px;
+    border-radius: 8px;
+    border: 2px solid #1e2126;
+    user-select: none;
+  }
+  .mc-slot {
+    aspect-ratio: 1;
+    background: #1e2126;
+    border: 1px solid #4a4f58;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.08s, border-color 0.12s;
+    overflow: hidden;
+    padding: 2px;
+    text-align: center;
+  }
+  .mc-slot:hover {
+    filter: brightness(1.2);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .mc-slot-index {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 0.58rem;
+    color: #64748b;
+    font-family: monospace;
+    line-height: 1;
+  }
+  .mc-slot-pane { background: rgba(100, 116, 139, 0.2); border-color: rgba(148, 163, 184, 0.3); color: #94a3b8; }
+  .mc-slot-char { background: rgba(34, 197, 94, 0.22); border-color: #22c55e; color: #fff; font-weight: 700; }
+  .mc-slot-gate { background: rgba(6, 182, 212, 0.22); border-color: #06b6d4; color: #67e8f9; font-weight: 700; }
+  .mc-slot-selected { outline: 2px solid #f59e0b; outline-offset: -1px; }
+
+  /* AI Insights Card Specific Styles */
+  .ai-summary-box {
+    background: rgba(0, 0, 0, 0.35);
+    border-left: 3px solid var(--purple);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+  .ai-bullet {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+    color: #cbd5e1;
+  }
+  .ai-action-btn {
+    background: rgba(168, 85, 247, 0.18);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #e9d5ff;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ai-action-btn:hover {
+    background: rgba(168, 85, 247, 0.35);
+    border-color: #c084fc;
+    color: #fff;
+    box-shadow: 0 0 10px var(--purple-glow);
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <!-- Top Navigation & Header -->
+  <header>
+    <div class="header-top">
+      <h1>
+        <span>Wynncraft Bot Controller</span>
+        <span class="brand-badge">AGY 2.0</span>
+        <span class="badge" id="status-badge">
+          <span class="dot dot-red" id="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </span>
+      </h1>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="prism-token-badge" class="badge">Checking session...</span>
+        <span id="world-state-badge" class="badge">State: UNKNOWN</span>
+      </div>
+    </div>
+    <nav>
+      <a href="index.html">Price lookup</a>
+      <a href="predict.html">Trend / prediction</a>
+      <a href="optimize.html">Slot optimizer</a>
+      <a href="bot.html" class="active">Bot controller</a>
+    </nav>
+  </header>
+
+  <!-- Global Action Bar Ticker (Cleaned & De-noised) -->
+  <div class="actionbar-ticker" id="actionbar-ticker">
+    <div id="lobby-prompt-banner" style="display:flex;align-items:center;gap:10px;flex:1">
+      <div class="ticker-pulse"></div>
+      <div>
+        <strong style="color:#f59e0b;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px">Wynncraft HUD Stream:</strong>
+        <span id="ticker-text" style="font-family:var(--font-mono);font-size:0.86rem;margin-left:6px;color:#fff">
+          Waiting for HUD packets...
+        </span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px" id="ticker-actions">
+      <button class="small" style="background:#22c55e" onclick="performBotAction('left_click')">🖱️ Left-Click (Play)</button>
+      <button class="small" style="background:#f59e0b;color:#1e293b" onclick="performBotAction('right_click')">🪟 Right-Click (Panes)</button>
+    </div>
+  </div>
+
+  <!-- Main Modular Node Grid -->
+  <div class="node-grid">
+
+    <!-- ========================================================= -->
+    <!-- ROW 1: Bot Telemetry (4) + 3D Viewport (8)               -->
+    <!-- ========================================================= -->
+    <div class="grid-row grid-row-4-8" id="row1" data-row-var="--gcols-r1">
+
+      <!-- Panel A: Telemetry -->
+      <div class="panel-wrap" id="pw-telemetry">
+        <div class="node-card accent-card" id="telemetry-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>📊 Bot Telemetry &amp; Auth</span>
+            </div>
+            <span id="active-server" class="badge">WC: -</span>
+          </div>
+
+          <!-- Vitals Bars -->
+          <div class="vitals-grid">
+            <div class="stat-tile">
+              <div class="stat-val">
+                <span id="stat-hp" style="color:#ef4444">0/20</span>
+                <span style="font-size:0.75rem;color:var(--muted)">HP</span>
+              </div>
+              <div class="meter-bar-wrap">
+                <div class="meter-bar" id="bar-hp" style="width:0%;background:#ef4444"></div>
+              </div>
+              <div class="stat-lbl">Health</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-val">
+                <span id="stat-food" style="color:#f59e0b">0/20</span>
+                <span style="font-size:0.75rem;color:var(--muted)">HUNGER</span>
+              </div>
+              <div class="meter-bar-wrap">
+                <div class="meter-bar" id="bar-food" style="width:0%;background:#f59e0b"></div>
+              </div>
+              <div class="stat-lbl">Hunger</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-val" style="color:var(--accent);font-size:0.95rem" id="stat-emeralds">0 E</div>
+              <div class="stat-lbl">Balance</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-val" style="color:var(--cyan);font-size:0.85rem;font-family:var(--font-mono)" id="coords-text">X: - Y: - Z: -</div>
+              <div class="stat-lbl">Coordinates</div>
+            </div>
+          </div>
+
+          <!-- Account & Instance Details -->
+          <div style="background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:0.82rem">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="color:var(--muted)">Prism Account:</span>
+              <strong id="account-name">boredfrom0</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="color:var(--muted)">Instance:</span>
+              <span id="instance-name">Wynncraft-1.21.11</span>
+            </div>
+          </div>
+
+          <!-- Character Target & Automation Controls -->
+          <div style="margin-bottom:12px">
+            <label for="char-slot">Character Select Target</label>
+            <select id="char-slot" onchange="onCharacterTargetChange()">
+              <optgroup label="Automatic Detection">
+                <option value="first" selected>(Auto) First Available Character</option>
+                <option value="archer">Archer</option>
+                <option value="warrior">Warrior</option>
+                <option value="mage">Mage</option>
+                <option value="assassin">Assassin</option>
+                <option value="shaman">Shaman</option>
+              </optgroup>
+              <optgroup label="Character Card Positions">
+                <option value="1">Card 1 (Slot #9)</option>
+                <option value="2">Card 2 (Slot #10)</option>
+                <option value="3">Card 3 (Slot #11)</option>
+                <option value="4">Card 4 (Slot #18)</option>
+                <option value="5">Card 5 (Slot #19)</option>
+              </optgroup>
+              <optgroup label="Manual Pane Overrides">
+                <option value="raw:1">Manual Override: Raw Slot 1 (Glass Pane)</option>
+                <option value="raw:0">Manual Override: Raw Slot 0</option>
+                <option value="raw:9">Manual Override: Raw Slot 9</option>
+                <option value="custom">Manual Override: Custom Slot #</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Switches -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:0.78rem">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+              <input type="checkbox" id="opt-autolock" checked onchange="updateAutoLockSettings()" /> Auto-Lock Class
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;color:#f59e0b">
+              <input type="checkbox" id="opt-manual-override" onchange="toggleManualOverride()" /> Manual Pane
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+              <input type="checkbox" id="opt-antiafk" checked /> Anti-AFK
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+              <input type="checkbox" id="opt-viewer" checked /> 3D Viewport
+            </label>
+          </div>
+
+          <!-- Manual Pane Override Subpanel -->
+          <div id="manual-override-panel" style="display:none;background:rgba(245,158,11,0.08);border:1px dashed #f59e0b;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:0.8rem">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span>Target Slot #:</span>
+              <input type="number" id="manual-slot-input" min="0" max="89" value="1" style="width:65px;padding:3px 6px" oninput="onManualSlotInputChange()" />
+            </div>
+            <div style="display:flex;gap:4px;margin-top:6px">
+              <button class="small secondary" onclick="lockManualSlotAsTarget()" style="flex:1">Lock Target</button>
+              <button class="small" style="background:#f59e0b;color:#1e293b;flex:1" onclick="clickManualSlotNow(0, 0)">Click Slot</button>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div style="display:flex;gap:8px;margin-top:auto">
+            <button id="btn-connect" style="flex:1">Connect Bot</button>
+            <button id="btn-disconnect" class="danger" style="flex:1" disabled>Disconnect</button>
+          </div>
+          <div id="conn-msg" style="font-size:0.75rem;color:var(--muted);margin-top:8px;text-align:center">Ready to connect.</div>
+        </div>
+        <!-- Column resize handle (right edge of left panel) -->
+        <div class="col-resizer" data-row="row1" title="Drag to resize columns"></div>
+      </div>
+
+      <!-- Panel B: 3D Viewport -->
+      <div class="panel-wrap" id="pw-viewer">
+        <div class="node-card cyan-card" id="viewer-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>🌐 3D World Viewport (Mineflayer Visualizer)</span>
+              <span class="badge" style="color:var(--cyan);border-color:rgba(6,182,212,0.3)">
+                <span class="dot dot-cyan"></span> :3000 Active
+              </span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="secondary small" onclick="reloadViewer()">Reload View</button>
+              <a href="http://localhost:3000" target="_blank" rel="noopener" style="font-size:0.8rem;color:var(--cyan);text-decoration:none">
+                Pop Out &nearr;
+              </a>
+            </div>
+          </div>
+
+          <div class="viewer-wrap">
+            <iframe id="viewer-frame" src="about:blank"></iframe>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:0.76rem;color:var(--muted)">
+            <span>Real-time Three.js canvas rendered directly from server world chunks.</span>
+            <span>Version Compatibility: 1.21.1 / Protocol 775</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /row1 -->
+
+    <!-- ========================================================= -->
+    <!-- ROW 2: Chat Stream (7) + AI Insights (5)                  -->
+    <!-- ========================================================= -->
+    <div class="grid-row grid-row-7-5" id="row2" data-row-var="--gcols-r2">
+
+      <!-- Panel A: Chat -->
+      <div class="panel-wrap" id="pw-chat">
+        <div class="node-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>💬 In-Game Chat &amp; Dialogue</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="chat-search" placeholder="Filter text..." style="width:110px;padding:3px 6px;font-size:0.76rem" oninput="applyChatFilters()" />
+              <button class="secondary small" onclick="clearChat()">Clear</button>
+            </div>
+          </div>
+
+          <!-- Filter Category Tabs -->
+          <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap" id="chat-filter-tabs">
+            <button class="small" style="background:var(--accent)" onclick="setChatFilter('all')">All</button>
+            <button class="secondary small" onclick="setChatFilter('dialogue')">NPC &amp; Dialogue</button>
+            <button class="secondary small" onclick="setChatFilter('quest')">Quests</button>
+            <button class="secondary small" onclick="setChatFilter('player')">Players &amp; Trade</button>
+            <button class="secondary small" onclick="setChatFilter('system')">System</button>
+            <button class="secondary small" onclick="setChatFilter('actionbar')">HUD Action Bar</button>
+          </div>
+
+          <!-- Feed -->
+          <div class="chat-box v-resizable" id="chat-feed">
+            <div class="chat-msg chat-tag-system">Welcome to Wynncraft Bot Controller. Messages, clean dialogues, and server notices stream here.</div>
+          </div>
+
+          <!-- Input Bar -->
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <input type="text" id="chat-input" placeholder="Send in-game message or command (/class, /hub, /party)..." onkeydown="if(event.key==='Enter') sendChat();" />
+            <button id="btn-send" onclick="sendChat()">Send</button>
+          </div>
+
+          <!-- Quick Chips -->
+          <div class="chip-group">
+            <span class="chip" onclick="quickChat('/class')">/class</span>
+            <span class="chip" onclick="quickChat('/hub')">/hub</span>
+            <span class="chip" onclick="quickChat('/party leave')">/party leave</span>
+            <span class="chip" onclick="quickChat('/guild')">/guild</span>
+            <span class="chip" onclick="quickChat('.help')">.help</span>
+          </div>
+        </div>
+        <!-- Column resize handle -->
+        <div class="col-resizer" data-row="row2" title="Drag to resize columns"></div>
+      </div>
+
+      <!-- Panel B: AI Insights -->
+      <div class="panel-wrap" id="pw-ai">
+        <div class="node-card purple-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>🧠 AI Chat Insights &amp; Review</span>
+            </div>
+            <span id="ai-engine-badge" class="badge" style="color:#c084fc;border-color:rgba(168,85,247,0.3)">
+              NLP Engine (0ms)
+            </span>
+          </div>
+
+          <!-- AI Status Summary -->
+          <div class="ai-summary-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <strong style="color:#e9d5ff" id="ai-state-label">State: Analyzing...</strong>
+              <span style="font-size:0.72rem;color:var(--muted)" id="ai-timestamp">-</span>
+            </div>
+            <div id="ai-summary-text" style="color:#cbd5e1">
+              Studying recent in-game messages, NPC dialogue, and server telemetry...
+            </div>
+          </div>
+
+          <!-- Action Recommendations -->
+          <div style="margin-bottom:10px">
+            <label>Recommended Decisions / Next Steps</label>
+            <div id="ai-recommendations" style="display:flex;flex-direction:column;gap:6px">
+              <button class="ai-action-btn" onclick="performBotAction('left_click')">
+                <span>🖱️</span>
+                <div>
+                  <div>Left-Click to Play</div>
+                  <div style="font-size:0.7rem;opacity:0.75">Enter world with current selected class</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Key Takeaways -->
+          <div style="margin-bottom:10px">
+            <label>Key Findings &amp; Signals</label>
+            <div id="ai-takeaways" style="background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-height:75px">
+              <div class="ai-bullet"><span>🔍</span><span>Monitoring chat and lobby telemetry...</span></div>
+            </div>
+          </div>
+
+          <!-- Spam Metrics & Review Action -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06)">
+            <span style="font-size:0.75rem;color:var(--muted)" id="ai-spam-filtered">⚡ 0 HUD glyphs &amp; ticks filtered</span>
+            <button class="purple small" onclick="triggerAIChatReview()">🔄 Review Chat Now</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /row2 -->
+
+    <!-- ========================================================= -->
+    <!-- ROW 3: Container / Gates (7) + Navigation (5)             -->
+    <!-- ========================================================= -->
+    <div class="grid-row grid-row-7-5b" id="row3" data-row-var="--gcols-r3">
+
+      <!-- Panel A: Container & Gates -->
+      <div class="panel-wrap" id="pw-container">
+        <div class="node-card gold-card" id="window-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>🪟 Container, Panes &amp; Real World Gates</span>
+              <span class="badge" id="window-badge">
+                <span class="dot dot-red" id="window-dot"></span>
+                <span id="window-title-badge">No Window Open</span>
+              </span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="secondary small" onclick="fetchWindow()">Refresh</button>
+              <button class="secondary small" onclick="inspectInventory()">Inspect "E"</button>
+              <button class="secondary small danger" onclick="closeActiveWindow()">Close (ESC)</button>
+            </div>
+          </div>
+
+          <!-- Real World Gates Panel -->
+          <div id="real-gates-panel" style="background:rgba(6,182,212,0.07);border:1px solid rgba(6,182,212,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="dot dot-cyan" id="gate-indicator-dot"></span>
+                <strong style="color:var(--cyan);font-size:0.84rem">Real World Gates:</strong>
+                <span id="gate-count-badge" style="font-size:0.78rem;color:var(--muted)">Scanning...</span>
+              </div>
+              <span style="font-size:0.72rem;color:var(--muted)">Click any gate to connect directly</span>
+            </div>
+            <div id="gate-buttons-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+              <span style="font-size:0.78rem;color:var(--muted);font-style:italic">Open character selection container to detect real world gates.</span>
+            </div>
+          </div>
+
+          <!-- Click Mode Selectors -->
+          <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:0.8rem">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-weight:600">Click Mode:</span>
+              <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin:0"><input type="radio" name="click-mode" value="left" checked /> Left</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin:0"><input type="radio" name="click-mode" value="right" /> Right</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin:0"><input type="radio" name="click-mode" value="shift" /> Shift</label>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="small" style="background:var(--accent)" onclick="quickSelectClass('first')">Select First Class</button>
+              <button class="small secondary" onclick="dispatchSlotClick(1, 0, 0)">Click Slot 1</button>
+              <button class="small secondary" onclick="dispatchSlotClick(9, 0, 0)">Click Slot 9</button>
+            </div>
+          </div>
+
+          <!-- 9x6 Grid Container -->
+          <div id="container-grid-wrapper" style="overflow-x:auto;padding:2px 0">
+            <div id="container-grid" class="mc-grid">
+              <!-- Dynamically populated slots -->
+            </div>
+          </div>
+
+          <!-- Slot Inspector Detail -->
+          <div id="slot-detail-box" style="margin-top:8px;padding:8px 10px;background:rgba(0,0,0,0.35);border:1px solid var(--border);border-radius:6px;font-size:0.78rem;display:none">
+            <div style="display:flex;justify-content:space-between;font-weight:700">
+              <span id="slot-detail-title">Slot #0</span>
+              <span id="slot-detail-type" style="color:var(--muted)"></span>
+            </div>
+            <div id="slot-detail-lore" style="color:#cbd5e1;margin-top:4px;white-space:pre-wrap"></div>
+            <div style="margin-top:6px;display:flex;gap:6px">
+              <button class="small" onclick="clickSelectedSlot(0, 0)">Left Click</button>
+              <button class="secondary small" onclick="clickSelectedSlot(1, 0)">Right Click</button>
+              <button class="secondary small" onclick="setSelectedSlotAsManualLock()">Lock as Target</button>
+            </div>
+          </div>
+        </div>
+        <!-- Column resize handle -->
+        <div class="col-resizer" data-row="row3" title="Drag to resize columns"></div>
+      </div>
+
+      <!-- Panel B: Navigation -->
+      <div class="panel-wrap" id="pw-nav">
+        <div class="node-card" id="lobby-actions-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>🧭 Pathfinding &amp; Bot Physical Actions</span>
+            </div>
+          </div>
+
+          <!-- Physical Actions -->
+          <div style="margin-bottom:12px">
+            <label>Lobby Physical Controls</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              <button id="btn-action-left" style="background:#22c55e" onclick="performBotAction('left_click')">🖱️ Left-Click (Play)</button>
+              <button id="btn-action-right" style="background:#f59e0b;color:#1e293b" onclick="performBotAction('right_click')">🪟 Right-Click (Panes)</button>
+              <button class="secondary small" onclick="performBotAction('sneak')">Shift (Sneak)</button>
+              <button class="secondary small" onclick="performBotAction('jump')">Space (Jump)</button>
+              <button class="secondary small" onclick="performBotAction('open_class')">Open Class GUI</button>
+            </div>
+            <div style="font-size:0.74rem;color:var(--muted);margin-top:6px" id="lobby-action-feedback">Ready for action dispatch.</div>
+          </div>
+
+          <!-- Autonomous Coordinate Pathfinding -->
+          <div style="margin-bottom:12px">
+            <label>Autonomous Coordinates</label>
+            <div style="display:grid;grid-template-columns:repeat(3, 1fr) auto auto;gap:6px;align-items:end">
+              <div><input type="number" id="nav-x" placeholder="X: 470" /></div>
+              <div><input type="number" id="nav-y" placeholder="Y: 67" /></div>
+              <div><input type="number" id="nav-z" placeholder="Z: -1575" /></div>
+              <button id="btn-goto" onclick="gotoCoords()">Go</button>
+              <button id="btn-stop" class="danger" onclick="stopNav()">Stop</button>
+            </div>
+          </div>
+
+          <!-- Wynncraft City POIs -->
+          <div style="margin-bottom:12px">
+            <label>City &amp; Trading Hub Waypoints</label>
+            <div class="chip-group" id="waypoint-chips">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Trade Market Quick Check -->
+          <div style="margin-top:auto;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">
+            <label>Trade Market Quick Check</label>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="price-query" placeholder="e.g. Gale's Sight" onkeydown="if(event.key==='Enter') quickPrice();" />
+              <button class="secondary small" onclick="quickPrice()">Check</button>
+            </div>
+            <div id="price-result" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /row3 -->
+
+    <!-- ========================================================= -->
+    <!-- ROW 4: Live Activity Diagnostics Log (full width)          -->
+    <!-- ========================================================= -->
+    <div class="grid-row grid-row-12" id="row4">
+      <div class="panel-wrap">
+        <div class="node-card" id="diagnostics-card">
+          <div class="node-header">
+            <div class="node-title">
+              <span>⚡ Live Bot Activity &amp; Diagnostics Log</span>
+              <span class="dot dot-green" id="log-status-dot"></span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;color:var(--muted);cursor:pointer;margin:0">
+                <input type="checkbox" id="log-autoscroll" checked /> Auto-scroll
+              </label>
+              <button class="secondary small" onclick="clearActivityLogs()">Clear Log</button>
+            </div>
+          </div>
+
+          <!-- Filter Tabs -->
+          <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap" id="log-filter-tabs">
+            <button class="small" style="background:var(--accent)" onclick="setLogCategory('ALL')">All</button>
+            <button class="secondary small" onclick="setLogCategory('GATE')">Gates</button>
+            <button class="secondary small" onclick="setLogCategory('CHAR')">Characters</button>
+            <button class="secondary small" onclick="setLogCategory('UI')">UI / Panes</button>
+            <button class="secondary small" onclick="setLogCategory('STATE')">State</button>
+            <button class="secondary small" onclick="setLogCategory('CHAT')">Chat</button>
+            <button class="secondary small" onclick="setLogCategory('ERROR')">Errors</button>
+          </div>
+
+          <div class="chat-box v-resizable" id="activity-log-feed" style="height:180px;font-size:0.78rem">
+            <div class="chat-msg chat-tag-system">Diagnostics stream active. Internal Mineflayer events, container states, and gate discoveries appear in real time.</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /row4 -->
+
+  </div><!-- /node-grid -->
+</div><!-- /wrap -->
+
+<script>
+  // Prevent any alert popups from freezing the dashboard
+  window.alert = function (msg) {
+    console.warn('[Dashboard Intercepted Alert]:', msg);
+    const cm = document.getElementById('conn-msg');
+    if (cm) cm.textContent = String(msg);
+  };
+
+  let connected = false;
+  let pollInterval = null;
+  let lastChatId = 0;
+  let eventSource = null;
+  let currentChatFilter = 'all';
+  const chatMessages = [];
+
+  // DOM Elements
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const prismTokenBadge = document.getElementById('prism-token-badge');
+  const btnConnect = document.getElementById('btn-connect');
+  const btnDisconnect = document.getElementById('btn-disconnect');
+  const connMsg = document.getElementById('conn-msg');
+  const activeServer = document.getElementById('active-server');
+  const worldStateBadge = document.getElementById('world-state-badge');
+  const optAutolock = document.getElementById('opt-autolock');
+  const optManualOverride = document.getElementById('opt-manual-override');
+  const manualOverridePanel = document.getElementById('manual-override-panel');
+  const manualSlotInput = document.getElementById('manual-slot-input');
+  const charSlot = document.getElementById('char-slot');
+  const statHp = document.getElementById('stat-hp');
+  const statFood = document.getElementById('stat-food');
+  const statEmeralds = document.getElementById('stat-emeralds');
+  const barHp = document.getElementById('bar-hp');
+  const barFood = document.getElementById('bar-food');
+  const coordsText = document.getElementById('coords-text');
+  const chatFeed = document.getElementById('chat-feed');
+  const chatInput = document.getElementById('chat-input');
+  const viewerCard = document.getElementById('viewer-card');
+  const viewerFrame = document.getElementById('viewer-frame');
+  const waypointChips = document.getElementById('waypoint-chips');
+  const tickerText = document.getElementById('ticker-text');
+
+  // Window Elements
+  const windowDot = document.getElementById('window-dot');
+  const windowTitleBadge = document.getElementById('window-title-badge');
+  const containerGrid = document.getElementById('container-grid');
+  const slotDetailBox = document.getElementById('slot-detail-box');
+  const slotDetailTitle = document.getElementById('slot-detail-title');
+  const slotDetailType = document.getElementById('slot-detail-type');
+  const slotDetailLore = document.getElementById('slot-detail-lore');
+
+  let currentWindowData = null;
+  let selectedSlotIdx = null;
+
+  // Initialize
+  window.addEventListener('DOMContentLoaded', () => {
+    loadWaypoints();
+    fetchStatus();
+    fetchWindow();
+    fetchInsights();
+    startPolling();
+    initSSE();
+  });
+
+  async function fetchStatus() {
+    try {
+      const res = await fetch('/api/bot/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      updateUI(data);
+    } catch (e) {
+      console.warn('Failed to fetch status:', e);
+    }
+  }
+
+  function updateUI(data) {
+    connected = data.connected;
+
+    // Badge
+    if (data.connected) {
+      statusDot.className = 'dot dot-green';
+      statusText.textContent = 'Connected';
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+    } else if (data.status === 'connecting') {
+      statusDot.className = 'dot dot-yellow';
+      statusText.textContent = 'Connecting...';
+      btnConnect.disabled = true;
+      btnDisconnect.disabled = false;
+    } else {
+      statusDot.className = 'dot dot-red';
+      statusText.textContent = 'Disconnected';
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+    }
+
+    connMsg.textContent = data.statusMessage || 'Idle';
+    activeServer.textContent = `WC: ${data.server || 'Hub'}`;
+
+    // World State
+    if (worldStateBadge && data.worldState) {
+      worldStateBadge.textContent = `State: ${data.worldState}`;
+      if (data.worldState === 'WORLD') {
+        worldStateBadge.style.color = '#22c55e';
+      } else if (data.worldState === 'CHARACTER_SELECTION' || data.worldState === 'SERVER_SELECT') {
+        worldStateBadge.style.color = '#f59e0b';
+      } else {
+        worldStateBadge.style.color = 'var(--muted)';
+      }
+    }
+
+    // Action Bar Ticker
+    if (data.currentActionBar) {
+      tickerText.textContent = data.currentActionBar;
+    }
+
+    // Auto-Lock sync
+    if (document.activeElement !== charSlot && data.characterTarget) {
+      const matched = Array.from(charSlot.options).some(o => o.value === data.characterTarget);
+      if (matched) {
+        charSlot.value = data.characterTarget;
+      }
+    }
+    if (document.activeElement !== optAutolock && data.autoLock !== undefined) {
+      optAutolock.checked = data.autoLock;
+    }
+    if (optManualOverride && document.activeElement !== optManualOverride && data.manualOverride !== undefined) {
+      optManualOverride.checked = data.manualOverride;
+      if (manualOverridePanel) {
+        manualOverridePanel.style.display = data.manualOverride ? 'block' : 'none';
+      }
+    }
+
+    // Window indicator
+    if (windowDot && windowTitleBadge) {
+      if (data.hasOpenWindow) {
+        windowDot.className = 'dot dot-green';
+        windowTitleBadge.textContent = data.currentWindowTitle || 'Window Open';
+      } else {
+        windowDot.className = 'dot dot-red';
+        windowTitleBadge.textContent = 'No Window Open';
+      }
+    }
+
+    // Prism Account
+    if (data.prism && data.prism.account) {
+      document.getElementById('account-name').textContent = data.prism.account.name;
+      const minLeft = data.prism.account.validMinutesRemaining;
+      if (data.prism.account.isTokenValid) {
+        prismTokenBadge.textContent = `Token Valid (${minLeft}m)`;
+        prismTokenBadge.style.color = '#22c55e';
+      } else {
+        prismTokenBadge.textContent = 'Token Expired';
+        prismTokenBadge.style.color = '#ef4444';
+      }
+    }
+
+    // Vitals
+    statHp.textContent = `${data.health}/20`;
+    statFood.textContent = `${data.food}/20`;
+    barHp.style.width = `${Math.min(100, Math.max(0, (data.health / 20) * 100))}%`;
+    barFood.style.width = `${Math.min(100, Math.max(0, (data.food / 20) * 100))}%`;
+
+    // Coordinates
+    if (data.position) {
+      coordsText.textContent = `X:${data.position.x} Y:${data.position.y} Z:${data.position.z}`;
+    } else {
+      coordsText.textContent = 'X: - Y: - Z: -';
+    }
+
+    // Emeralds
+    if (data.emeralds) {
+      statEmeralds.textContent = data.emeralds.formatted || '0 E';
+    }
+
+    // 3D Viewer URL
+    if (data.viewerActive && data.viewerUrl) {
+      if (viewerFrame.src === 'about:blank' || !viewerFrame.src) {
+        viewerFrame.src = data.viewerUrl;
+      }
+    }
+
+    // Gates
+    if (data.availableGates) {
+      renderGates(data.availableGates);
+    }
+    if (data.recentLogs && activityLogs.length === 0) {
+      data.recentLogs.forEach(l => appendLogMessage(l));
+    }
+  }
+
+  function reloadViewer() {
+    if (viewerFrame) {
+      viewerFrame.src = viewerFrame.src;
+    }
+  }
+
+  // ==========================================
+  // SSE Event Streaming
+  // ==========================================
+  function initSSE() {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource('/api/bot/events');
+
+    eventSource.addEventListener('status', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        updateUI(data);
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('chat', (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        appendChatMessage(msg);
+        fetchInsights();
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('actionbar', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.text) {
+          tickerText.textContent = data.text;
+        }
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('log', (e) => {
+      try {
+        const log = JSON.parse(e.data);
+        appendLogMessage(log);
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('gate', (e) => {
+      try {
+        const gate = JSON.parse(e.data);
+        if (currentWindowData && currentWindowData.availableGates) {
+          if (!currentWindowData.availableGates.some(g => g.slot === gate.slot)) {
+            currentWindowData.availableGates.push(gate);
+            renderGates(currentWindowData.availableGates);
+          }
+        }
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('gates', (e) => {
+      try {
+        const gates = JSON.parse(e.data);
+        renderGates(gates);
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('window', (e) => {
+      try {
+        const win = JSON.parse(e.data);
+        renderWindow(win);
+      } catch (err) {}
+    });
+
+    eventSource.addEventListener('window_close', () => {
+      fetchWindow();
+    });
+  }
+
+  function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/bot/poll?since=${lastChatId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status) updateUI(data.status);
+          if (data.actionbar) tickerText.textContent = data.actionbar;
+          if (data.messages && data.messages.length > 0) {
+            data.messages.forEach(msg => appendChatMessage(msg));
+            fetchInsights();
+          }
+        }
+      } catch (e) {}
+    }, 1500);
+
+    // Periodic insights check every 5s
+    setInterval(fetchInsights, 5000);
+  }
+
+  // ==========================================
+  // AI Chat Insights & Heuristic Review
+  // ==========================================
+  async function fetchInsights() {
+    try {
+      const res = await fetch('/api/bot/chat/insights?limit=60');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.ok && data.insights) {
+        renderInsights(data.insights);
+      }
+    } catch (e) {}
+  }
+
+  function renderInsights(insights) {
+    if (!insights) return;
+    const stateLabel = document.getElementById('ai-state-label');
+    const summaryText = document.getElementById('ai-summary-text');
+    const timestampText = document.getElementById('ai-timestamp');
+    const recsList = document.getElementById('ai-recommendations');
+    const takeawaysList = document.getElementById('ai-takeaways');
+    const spamText = document.getElementById('ai-spam-filtered');
+    const engineBadge = document.getElementById('ai-engine-badge');
+
+    if (stateLabel) stateLabel.textContent = `State: ${insights.currentState || 'Active'}`;
+    if (summaryText) summaryText.textContent = insights.summary || 'Telemetry normal.';
+    if (timestampText) timestampText.textContent = insights.evaluatedAt || '';
+    if (engineBadge && insights.engine) engineBadge.textContent = insights.engine.includes('Gemini') ? 'Gemini AI' : 'NLP Engine (0ms)';
+
+    if (spamText && insights.stats) {
+      spamText.textContent = `⚡ ${insights.stats.filteredSpam || 0} redundant HUD glyphs & duplicate ticks filtered`;
+    }
+
+    // Render Recommendations
+    if (recsList && insights.actionRecommendations) {
+      recsList.innerHTML = '';
+      insights.actionRecommendations.forEach(rec => {
+        const btn = document.createElement('button');
+        btn.className = 'ai-action-btn';
+        let icon = '⚡';
+        let clickAction = () => performBotAction('left_click');
+        if (rec.action === 'SELECT_CHARACTER') {
+          icon = '🖱️';
+          clickAction = () => performBotAction('left_click');
+        } else if (rec.action === 'SWITCH_SERVER') {
+          icon = '🌐';
+          clickAction = () => performBotAction('right_click');
+        } else if (rec.action === 'CONTINUE_DIALOGUE') {
+          icon = '💬';
+          clickAction = () => performBotAction('sneak');
+        } else if (rec.action === 'RECONNECT') {
+          icon = '🔄';
+          clickAction = () => document.getElementById('btn-connect').click();
+        }
+
+        btn.innerHTML = `<span>${icon}</span><div><div>${escapeHtml(rec.label)}</div><div style="font-size:0.7rem;opacity:0.75">${escapeHtml(rec.desc)}</div></div>`;
+        btn.onclick = clickAction;
+        recsList.appendChild(btn);
+      });
+      if (insights.actionRecommendations.length === 0) {
+        recsList.innerHTML = '<span style="font-size:0.76rem;color:var(--muted);font-style:italic">No urgent actions pending. Exploration ongoing.</span>';
+      }
+    }
+
+    // Render Takeaways
+    if (takeawaysList && insights.keyTakeaways) {
+      takeawaysList.innerHTML = '';
+      insights.keyTakeaways.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'ai-bullet';
+        div.innerHTML = `<span>•</span><span>${escapeHtml(item)}</span>`;
+        takeawaysList.appendChild(div);
+      });
+      if (insights.keyTakeaways.length === 0) {
+        takeawaysList.innerHTML = '<span style="font-size:0.76rem;color:var(--muted);font-style:italic">All clear. Chat stream is noise-free.</span>';
+      }
+    }
+  }
+
+  async function triggerAIChatReview() {
+    const summaryText = document.getElementById('ai-summary-text');
+    if (summaryText) summaryText.textContent = 'Performing deep review of recent messages and dialogues...';
+    try {
+      const res = await fetch('/api/bot/chat/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 80 })
+      });
+      const data = await res.json();
+      if (data.ok && data.insights) {
+        renderInsights(data.insights);
+      }
+    } catch (e) {
+      if (summaryText) summaryText.textContent = `Review error: ${e.message}`;
+    }
+  }
+
+  // ==========================================
+  // Chat Feeding & Filtering
+  // ==========================================
+  function appendChatMessage(msg) {
+    if (msg.id && msg.id <= lastChatId) return;
+    if (msg.id) lastChatId = msg.id;
+
+    chatMessages.push(msg);
+    if (chatMessages.length > 500) chatMessages.shift();
+
+    renderChatEntry(msg);
+  }
+
+  function renderChatEntry(msg) {
+    const searchVal = document.getElementById('chat-search')?.value.toLowerCase() || '';
+    if (currentChatFilter !== 'all' && msg.type !== currentChatFilter) return;
+    if (searchVal && !String(msg.text || '').toLowerCase().includes(searchVal) && !String(msg.sender || '').toLowerCase().includes(searchVal)) return;
+
+    const row = document.createElement('div');
+    row.className = 'chat-msg';
+
+    let tagClass = 'chat-tag-system';
+    if (msg.type === 'dialogue') tagClass = 'chat-tag-dialogue';
+    else if (msg.type === 'quest') tagClass = 'chat-tag-quest';
+    else if (msg.type === 'market') tagClass = 'chat-tag-market';
+    else if (msg.type === 'player') tagClass = 'chat-tag-player';
+    else if (msg.type === 'actionbar') tagClass = 'chat-tag-actionbar';
+
+    const timeSpan = `<span class="chat-time">[${escapeHtml(msg.time)}]</span>`;
+    const senderSpan = msg.sender ? `<span class="chat-sender ${tagClass}">[${escapeHtml(msg.sender)}]</span>` : '';
+    row.innerHTML = `${timeSpan}${senderSpan} <span class="${tagClass}">${escapeHtml(msg.text)}</span>`;
+
+    chatFeed.appendChild(row);
+    chatFeed.scrollTop = chatFeed.scrollHeight;
+  }
+
+  function setChatFilter(filter) {
+    currentChatFilter = filter;
+    const tabs = document.querySelectorAll('#chat-filter-tabs button');
+    tabs.forEach(tab => {
+      if (tab.getAttribute('onclick')?.includes(`'${filter}'`)) {
+        tab.style.background = 'var(--accent)';
+        tab.className = 'small';
+      } else {
+        tab.style.background = '';
+        tab.className = 'secondary small';
+      }
+    });
+
+    // Re-render feed
+    chatFeed.innerHTML = '';
+    chatMessages.forEach(m => renderChatEntry(m));
+  }
+
+  function applyChatFilters() {
+    chatFeed.innerHTML = '';
+    chatMessages.forEach(m => renderChatEntry(m));
+  }
+
+  function clearChat() {
+    chatMessages.length = 0;
+    chatFeed.innerHTML = '<div class="chat-msg chat-tag-system">Chat history cleared.</div>';
+  }
+
+  async function sendChat() {
+    const msg = chatInput.value.trim();
+    if (!msg) return;
+    chatInput.value = '';
+
+    try {
+      await fetch('/api/bot/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function quickChat(text) {
+    chatInput.value = text;
+    sendChat();
+  }
+
+  // ==========================================
+  // Bot Connections & Actions
+  // ==========================================
+  btnConnect.addEventListener('click', async () => {
+    const target = getEffectiveTarget();
+    const autolockVal = optAutolock.checked;
+    const manualOverrideVal = optManualOverride ? optManualOverride.checked : false;
+    const manualSlotVal = parseInt(manualSlotInput?.value || '1', 10);
+    const antiAfk = document.getElementById('opt-antiafk').checked;
+    const viewer = document.getElementById('opt-viewer').checked;
+
+    connMsg.textContent = 'Initiating connection to Wynncraft...';
+    try {
+      const res = await fetch('/api/bot/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterSlot: target,
+          characterTarget: target,
+          autoLock: autolockVal,
+          manualOverride: manualOverrideVal,
+          manualSlot: manualSlotVal,
+          antiAfk,
+          viewer
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        connMsg.textContent = `Connection failed: ${data.error}`;
+        appendLogMessage({ time: new Date().toLocaleTimeString(), type: 'ERROR', message: `Connection failed: ${data.error}` });
+      }
+    } catch (e) {
+      connMsg.textContent = `Error connecting: ${e.message}`;
+      appendLogMessage({ time: new Date().toLocaleTimeString(), type: 'ERROR', message: `Error connecting: ${e.message}` });
+    }
+  });
+
+  btnDisconnect.addEventListener('click', async () => {
+    try {
+      await fetch('/api/bot/disconnect', { method: 'POST' });
+    } catch (e) {}
+  });
+
+  async function performBotAction(action) {
+    const feedback = document.getElementById('lobby-action-feedback');
+    if (feedback) feedback.textContent = `Executing '${action}'...`;
+    try {
+      const res = await fetch('/api/bot/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (feedback) feedback.textContent = `Action '${action}' successful.`;
+        setTimeout(fetchWindow, 500);
+      } else {
+        if (feedback) feedback.textContent = `Action failed: ${data.error || 'error'}`;
+      }
+    } catch (e) {
+      if (feedback) feedback.textContent = `Action error: ${e.message}`;
+    }
+  }
+
+  function getEffectiveTarget() {
+    const val = charSlot.value;
+    if (val === 'custom') {
+      const num = parseInt(manualSlotInput?.value || '1', 10);
+      return `raw:${num}`;
+    }
+    return val;
+  }
+
+  function onCharacterTargetChange() {
+    const val = charSlot.value;
+    if (val.startsWith('raw:') || val === 'custom') {
+      optManualOverride.checked = true;
+      manualOverridePanel.style.display = 'block';
+      if (val.startsWith('raw:')) {
+        const parsed = parseInt(val.split(':')[1], 10);
+        if (!isNaN(parsed)) manualSlotInput.value = parsed;
+      }
+    } else {
+      if (!optManualOverride.checked) {
+        manualOverridePanel.style.display = 'none';
+      }
+    }
+    updateAutoLockSettings();
+  }
+
+  function onManualSlotInputChange() {
+    updateAutoLockSettings();
+  }
+
+  function toggleManualOverride() {
+    const active = optManualOverride.checked;
+    manualOverridePanel.style.display = active ? 'block' : 'none';
+    updateAutoLockSettings();
+  }
+
+  function lockManualSlotAsTarget() {
+    const slotNum = parseInt(manualSlotInput.value, 10) || 1;
+    charSlot.value = `raw:${slotNum}`;
+    optManualOverride.checked = true;
+    updateAutoLockSettings();
+  }
+
+  async function clickManualSlotNow(button = 0, mode = 0) {
+    const slotNum = parseInt(manualSlotInput.value, 10);
+    if (isNaN(slotNum)) return;
+    await dispatchSlotClick(slotNum, button, mode);
+  }
+
+  async function updateAutoLockSettings() {
+    const enabled = optAutolock.checked;
+    const isManual = optManualOverride ? optManualOverride.checked : false;
+    const target = getEffectiveTarget();
+    try {
+      await fetch('/api/bot/autolock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled,
+          characterTarget: target,
+          manualOverride: isManual
+        })
+      });
+    } catch (e) {}
+  }
+
+  // ==========================================
+  // Container & Inventory Inspector
+  // ==========================================
+  async function fetchWindow() {
+    try {
+      const res = await fetch('/api/bot/window');
+      if (!res.ok) return;
+      const data = await res.json();
+      currentWindowData = data;
+      renderWindow(data);
+    } catch (e) {}
+  }
+
+  function renderWindow(win) {
+    currentWindowData = win;
+    if (!containerGrid) return;
+    containerGrid.innerHTML = '';
+
+    if (!win || !win.open) {
+      if (windowDot) windowDot.className = 'dot dot-red';
+      if (windowTitleBadge) windowTitleBadge.textContent = 'No Window Open';
+      containerGrid.innerHTML = '<div style="grid-column:span 9;padding:16px;text-align:center;color:var(--muted);font-size:0.8rem">No active container. Click "Inspect E" or Right-Click in lobby to open window panes.</div>';
+      return;
+    }
+
+    if (windowDot) windowDot.className = 'dot dot-green';
+    if (windowTitleBadge) windowTitleBadge.textContent = `${win.title || 'Container'} (#${win.id})`;
+
+    const total = win.totalSlots || 54;
+    const slotsMap = {};
+    (win.slots || []).forEach(s => { slotsMap[s.slot] = s; });
+
+    for (let i = 0; i < total; i++) {
+      const item = slotsMap[i];
+      const slotEl = document.createElement('div');
+      slotEl.id = `mc-slot-${i}`;
+      slotEl.className = 'mc-slot';
+
+      if (!item || item.empty) {
+        slotEl.innerHTML = `<span class="mc-slot-index">${i}</span>`;
+      } else {
+        let typeClass = '';
+        if (item.isGlassPane) typeClass = 'mc-slot-pane';
+        else if (item.isCharacterSlot) typeClass = 'mc-slot-char';
+        else if (item.isWorldGate) typeClass = 'mc-slot-gate';
+
+        if (typeClass) slotEl.classList.add(typeClass);
+
+        const label = item.isCharacterSlot ? (item.characterClass || 'Class') : (item.isWorldGate ? `W${item.worldNumber || ''}` : (item.customName ? item.customName.slice(0, 5) : item.name.slice(0, 4)));
+
+        slotEl.innerHTML = `<span class="mc-slot-index">${i}</span><span style="font-size:0.68rem;line-height:1;margin-top:4px">${escapeHtml(label)}</span>`;
+      }
+
+      slotEl.onclick = () => onSlotClick(i, item);
+      containerGrid.appendChild(slotEl);
+    }
+  }
+
+  function onSlotClick(slotIdx, item) {
+    selectedSlotIdx = slotIdx;
+    if (manualSlotInput) manualSlotInput.value = slotIdx;
+
+    document.querySelectorAll('.mc-slot').forEach(el => el.classList.remove('mc-slot-selected'));
+    const targetEl = document.getElementById(`mc-slot-${slotIdx}`);
+    if (targetEl) targetEl.classList.add('mc-slot-selected');
+
+    if (slotDetailBox) {
+      slotDetailBox.style.display = 'block';
+      if (!item || item.empty) {
+        slotDetailTitle.textContent = `Slot #${slotIdx}: Empty`;
+        slotDetailType.textContent = 'None';
+        slotDetailLore.textContent = 'Empty slot.';
+      } else {
+        slotDetailTitle.textContent = `Slot #${slotIdx}: ${item.customName || item.name}`;
+        slotDetailType.textContent = item.isGlassPane ? 'Glass Pane' : (item.isCharacterSlot ? 'Character Card' : 'Item');
+        slotDetailLore.textContent = (item.lore && item.lore.length > 0) ? item.lore.join('\n') : `Item: ${item.name}`;
+      }
+    }
+
+    const modeRadio = document.querySelector('input[name="click-mode"]:checked')?.value || 'left';
+    let button = 0, mode = 0;
+    if (modeRadio === 'right') { button = 1; mode = 0; }
+    else if (modeRadio === 'shift') { button = 0; mode = 1; }
+    dispatchSlotClick(slotIdx, button, mode);
+  }
+
+  async function dispatchSlotClick(slotIdx, button = 0, mode = 0) {
+    const feedback = document.getElementById('lobby-action-feedback');
+    try {
+      const res = await fetch('/api/bot/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slot: slotIdx,
+          button,
+          mode,
+          windowId: currentWindowData && currentWindowData.open ? currentWindowData.id : null
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (feedback) feedback.textContent = `Clicked slot #${slotIdx}.`;
+        setTimeout(fetchWindow, 250);
+      }
+    } catch (e) {}
+  }
+
+  async function clickSelectedSlot(button, mode) {
+    if (selectedSlotIdx !== null) await dispatchSlotClick(selectedSlotIdx, button, mode);
+  }
+
+  function setSelectedSlotAsManualLock() {
+    if (selectedSlotIdx !== null) {
+      manualSlotInput.value = selectedSlotIdx;
+      lockManualSlotAsTarget();
+    }
+  }
+
+  async function quickSelectClass(slotOrClass) {
+    try {
+      const res = await fetch('/api/bot/class', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slotOrClass })
+      });
+      setTimeout(fetchWindow, 400);
+    } catch (e) {}
+  }
+
+  async function inspectInventory() {
+    try {
+      const res = await fetch('/api/bot/open_inventory', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok && data.window) renderWindow(data.window);
+    } catch (e) {}
+  }
+
+  async function closeActiveWindow() {
+    try {
+      await fetch('/api/bot/close_window', { method: 'POST' });
+      setTimeout(fetchWindow, 200);
+    } catch (e) {}
+  }
+
+  // ==========================================
+  // Real World Gates
+  // ==========================================
+  function renderGates(gates) {
+    const countBadge = document.getElementById('gate-count-badge');
+    const buttonsList = document.getElementById('gate-buttons-list');
+    const indicator = document.getElementById('gate-indicator-dot');
+    if (!buttonsList) return;
+
+    if (!gates || gates.length === 0) {
+      if (countBadge) countBadge.textContent = 'No gates open';
+      if (indicator) indicator.className = 'dot dot-yellow';
+      buttonsList.innerHTML = '<span style="font-size:0.78rem;color:var(--muted);font-style:italic">Open character selection container to detect world gates.</span>';
+      return;
+    }
+
+    if (countBadge) countBadge.textContent = `${gates.length} Gate(s) Discovered!`;
+    if (indicator) indicator.className = 'dot dot-cyan';
+    buttonsList.innerHTML = '';
+
+    gates.forEach(gate => {
+      const btn = document.createElement('button');
+      btn.className = 'small';
+      btn.style.background = gate.isRecommended ? '#047857' : '#0e7490';
+      btn.style.borderColor = gate.isRecommended ? '#10b981' : '#06b6d4';
+      const pInfo = gate.onlinePlayers ? ` (${gate.onlinePlayers})` : '';
+      btn.innerHTML = `🌐 <strong>${escapeHtml(gate.name)}</strong> <span style="font-size:0.72rem;opacity:0.85">${escapeHtml(pInfo)}</span>`;
+      btn.onclick = () => enterGate(gate.worldNumber !== null ? gate.worldNumber : gate.slot);
+      buttonsList.appendChild(btn);
+    });
+  }
+
+  async function enterGate(target) {
+    try {
+      await fetch('/api/bot/gate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ world: target })
+      });
+      setTimeout(fetchWindow, 500);
+    } catch (e) {}
+  }
+
+  // ==========================================
+  // Waypoints & Pathfinding
+  // ==========================================
+  async function loadWaypoints() {
+    try {
+      const res = await fetch('/api/bot/waypoints');
+      if (!res.ok) return;
+      const data = await res.json();
+      waypointChips.innerHTML = '';
+      (data.waypoints || []).forEach(wp => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = `${wp.name} (${wp.x}, ${wp.z})`;
+        chip.title = wp.desc;
+        chip.onclick = () => {
+          document.getElementById('nav-x').value = wp.x;
+          document.getElementById('nav-y').value = wp.y;
+          document.getElementById('nav-z').value = wp.z;
+          gotoCoords();
+        };
+        waypointChips.appendChild(chip);
+      });
+    } catch (e) {}
+  }
+
+  async function gotoCoords() {
+    const x = parseFloat(document.getElementById('nav-x').value);
+    const y = parseFloat(document.getElementById('nav-y').value);
+    const z = parseFloat(document.getElementById('nav-z').value);
+    if (isNaN(x) || isNaN(y) || isNaN(z)) return;
+    try {
+      await fetch('/api/bot/goto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y, z })
+      });
+    } catch (e) {}
+  }
+
+  async function stopNav() {
+    try {
+      await fetch('/api/bot/stop', { method: 'POST' });
+    } catch (e) {}
+  }
+
+  async function quickPrice() {
+    const q = document.getElementById('price-query').value.trim();
+    if (!q) return;
+    const resEl = document.getElementById('price-result');
+    resEl.textContent = 'Searching trade market...';
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data && data.results && data.results.length > 0) {
+        const item = data.results[0];
+        resEl.textContent = `${item.name}: ${item.price_formatted || item.price + ' emeralds'} (Lowest)`;
+      } else {
+        resEl.textContent = 'No listings found.';
+      }
+    } catch (e) {
+      resEl.textContent = 'Price lookup failed.';
+    }
+  }
+
+  // ==========================================
+  // Activity Diagnostics Log
+  // ==========================================
+  let currentLogCategory = 'ALL';
+  const activityLogs = [];
+
+  function appendLogMessage(log) {
+    activityLogs.push(log);
+    if (activityLogs.length > 500) activityLogs.shift();
+    if (currentLogCategory !== 'ALL' && log.category !== currentLogCategory) return;
+    renderLogEntry(log);
+  }
+
+  function renderLogEntry(log) {
+    const feed = document.getElementById('activity-log-feed');
+    if (!feed) return;
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+
+    let tagColor = '#94a3b8';
+    if (log.category === 'GATE') tagColor = '#06b6d4';
+    else if (log.category === 'CHAR') tagColor = '#a855f7';
+    else if (log.category === 'UI') tagColor = '#f59e0b';
+    else if (log.category === 'STATE') tagColor = '#38bdf8';
+    else if (log.category === 'ERROR') tagColor = '#ef4444';
+    else if (log.category === 'CHAT') tagColor = '#cbd5e0';
+    else if (log.category === 'SYSTEM') tagColor = '#22c55e';
+
+    div.innerHTML = `<span class="chat-time">[${escapeHtml(log.time)}]</span> <strong style="color:${tagColor}">[${escapeHtml(log.category)}]</strong> <span>${escapeHtml(log.message)}</span>`;
+    feed.appendChild(div);
+
+    const autoscroll = document.getElementById('log-autoscroll');
+    if (!autoscroll || autoscroll.checked) {
+      feed.scrollTop = feed.scrollHeight;
+    }
+  }
+
+  function setLogCategory(cat) {
+    currentLogCategory = cat;
+    const feed = document.getElementById('activity-log-feed');
+    if (!feed) return;
+    feed.innerHTML = '';
+    const filtered = cat === 'ALL' ? activityLogs : activityLogs.filter(l => l.category === cat);
+    filtered.forEach(l => renderLogEntry(l));
+
+    const tabs = document.querySelectorAll('#log-filter-tabs button');
+    tabs.forEach(tab => {
+      if (tab.textContent.toUpperCase().includes(cat) || (cat === 'ALL' && tab.textContent.includes('All'))) {
+        tab.style.background = 'var(--accent)';
+        tab.className = 'small';
+      } else {
+        tab.style.background = '';
+        tab.className = 'secondary small';
+      }
+    });
+  }
+
+  function clearActivityLogs() {
+    activityLogs.length = 0;
+    const feed = document.getElementById('activity-log-feed');
+    if (feed) feed.innerHTML = '<div class="chat-msg chat-tag-system">Diagnostics log cleared.</div>';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /* ============================================================
+     COLUMN RESIZER — drag handle between panels in each grid-row
+  ============================================================ */
+  (function initPanelResizers() {
+    // Map from row id → CSS variable name
+    const ROW_VARS = {
+      row1: '--gcols-r1',
+      row2: '--gcols-r2',
+      row3: '--gcols-r3',
+    };
+
+    function saveLayout() {
+      const data = {};
+      for (const [rowId, cssVar] of Object.entries(ROW_VARS)) {
+        const row = document.getElementById(rowId);
+        if (row) data[rowId] = getComputedStyle(row).getPropertyValue(cssVar).trim() || '';
+      }
+      try { localStorage.setItem('wynn-panel-layout', JSON.stringify(data)); } catch(_) {}
+    }
+
+    function restoreLayout() {
+      try {
+        const raw = localStorage.getItem('wynn-panel-layout');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        for (const [rowId, val] of Object.entries(data)) {
+          const row = document.getElementById(rowId);
+          const cssVar = ROW_VARS[rowId];
+          if (row && cssVar && val) row.style.setProperty(cssVar, val);
+        }
+      } catch(_) {}
+    }
+
+    function attachResizer(handle) {
+      const rowId = handle.dataset.row;
+      const row = document.getElementById(rowId);
+      if (!row) return;
+      const cssVar = ROW_VARS[rowId];
+      if (!cssVar) return;
+
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        handle.classList.add('dragging');
+
+        // Get the two panel-wraps in this row
+        const panels = Array.from(row.children).filter(el => el.classList.contains('panel-wrap'));
+        if (panels.length < 2) { handle.classList.remove('dragging'); return; }
+
+        const rowRect = row.getBoundingClientRect();
+        const totalWidth = rowRect.width;
+        const gap = parseInt(getComputedStyle(row).gap) || 16;
+
+        function onMouseMove(ev) {
+          const x = ev.clientX - rowRect.left;
+          // Clamp left panel to 15%–85% of total width
+          const leftFr = Math.max(0.15, Math.min(0.85, (x - gap / 2) / (totalWidth - gap)));
+          const rightFr = 1 - leftFr;
+          const val = `${leftFr.toFixed(4)}fr ${rightFr.toFixed(4)}fr`;
+          row.style.setProperty(cssVar, val);
+        }
+
+        function onMouseUp() {
+          handle.classList.remove('dragging');
+          saveLayout();
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    // Attach all handles
+    document.querySelectorAll('.col-resizer').forEach(attachResizer);
+
+    // Restore saved layout on load
+    restoreLayout();
+
+    // Expose reset for debugging
+    window.resetPanelLayout = function() {
+      try { localStorage.removeItem('wynn-panel-layout'); } catch(_) {}
+      for (const [rowId, cssVar] of Object.entries(ROW_VARS)) {
+        const row = document.getElementById(rowId);
+        if (row) row.style.removeProperty(cssVar);
+      }
+      addLog('Panel layout reset to defaults.', 'UI');
+    };
+  })();
+</script>
+</body>
+</html>

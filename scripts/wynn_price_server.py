@@ -15,6 +15,7 @@ import os
 import random
 import threading
 import time
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -424,8 +425,74 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # keep request logs quiet; nothing sensitive is logged anyway
 
+    def _forward_to_bot_server(self, method, parsed):
+        bot_url = f"http://127.0.0.1:8124{self.path}"
+        body = None
+        if method == "POST":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                if content_length > 0:
+                    body = self.rfile.read(content_length)
+            except Exception:
+                body = None
+
+        headers = {
+            "Content-Type": self.headers.get("Content-Type", "application/json"),
+            "Accept": self.headers.get("Accept", "*/*")
+        }
+        req = urllib.request.Request(bot_url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = resp.read()
+                self.send_response(resp.status)
+                self.send_header("Content-Type", resp.headers.get("Content-Type", "application/json"))
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+        except urllib.error.HTTPError as e:
+            data = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", e.headers.get("Content-Type", "application/json"))
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            # Bot server may be starting up
+            self._json(503, {
+                "ok": False,
+                "error": "WynnBot server unreachable on port 8124",
+                "details": str(e)
+            })
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        safe_path = os.path.normpath(parsed.path).lstrip("/") or "index.html"
+        file_path = (DASHBOARD_DIR / safe_path).resolve()
+        if file_path.is_file() and (DASHBOARD_DIR.resolve() in file_path.parents or file_path == DASHBOARD_DIR.resolve()):
+            content_type = "text/html" if file_path.suffix == ".html" else "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(file_path.stat().st_size))
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path.startswith("/api/bot/"):
+            self._forward_to_bot_server("GET", parsed)
+            return
 
         routes = {
             "/api/price": self._handle_price,
@@ -443,6 +510,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._serve_static(parsed.path)
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/api/bot/"):
+            self._forward_to_bot_server("POST", parsed)
+            return
+        self.send_response(404)
+        self.end_headers()
 
     def _handle_price(self, parsed):
         params = urllib.parse.parse_qs(parsed.query)
@@ -586,26 +661,43 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        content_type = "text/html" if file_path.suffix == ".html" else "application/octet-stream"
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.end_headers()
-        self.wfile.write(file_path.read_bytes())
+        try:
+            content_type = "text/html" if file_path.suffix == ".html" else "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.end_headers()
+            self.wfile.write(file_path.read_bytes())
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _json(self, status, payload, cache_hit=False):
-        if cache_hit and isinstance(payload, dict):
-            payload = {**payload, "_cached": True}
-        body = json.dumps(payload).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            if cache_hit and isinstance(payload, dict):
+                payload = {**payload, "_cached": True}
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
 
 if __name__ == "__main__":
     key_present = load_api_key() is not None
     print(f"Serving {DASHBOARD_DIR} on http://localhost:{PORT}")
     print(f"API key configured: {key_present}" + ("" if key_present else f" (create {KEY_FILE} or set WYNNVENTORY_API_KEY)"))
+
+    # Ensure WynnBot API service is running on 8124
+    bot_server_script = Path(__file__).resolve().parent / "wynn_bot_server.js"
+    if bot_server_script.is_file():
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8124/api/bot/status", timeout=1):
+                pass
+        except Exception:
+            print("Spawning WynnBot background service (port 8124)...")
+            subprocess.Popen(["node", str(bot_server_script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     threading.Thread(target=watchlist_poll_loop, daemon=True).start()
     ThreadingHTTPServer(("localhost", PORT), Handler).serve_forever()

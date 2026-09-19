@@ -25,34 +25,58 @@ is what this setup uses.
 - `dashboard/index.html` - a read-only, static price-reference page for the
   Trade Market (see note below on data access).
 
-## Setup
+## Setup (macOS & Linux)
 
-Prerequisites: [Prism Launcher](https://prismlauncher.org) installed and a
-Microsoft/Minecraft account already added to it.
+Prerequisites:
+- [Prism Launcher](https://prismlauncher.org) installed with a Microsoft/Minecraft account added.
+  - **macOS**: `brew install --cask prismlauncher` (or download the DMG)
+  - **Linux**: `pacman -S prismlauncher` (or your package manager / Flatpak)
+- Node.js `v20+` and Python `3.10+`
+
+### One-Command Setup
 
 ```bash
-git clone <this repo>
+git clone https://github.com/Shubin123/wynncraft-quicklaunch.git
 cd wynncraft-quicklaunch
-./scripts/install.sh
+./scripts/setup.sh
 ```
 
-Then, once:
+This universal script will:
+1. Configure the Prism Launcher `Wynncraft-1.21.11` instance (in `~/Library/Application Support/PrismLauncher` on macOS, or `~/.local/share/PrismLauncher` on Linux).
+2. Download and verify required Fabric mods (Wynntils, Wynnventory, Fabric API, Cloth Config, Mod Menu).
+3. Install Node.js bot dependencies (`mineflayer-wynn`) and Python dependencies (`Pillow`).
+4. Apply the official Wynncraft resource pack texture atlas to the 3D viewer.
+5. Create a desktop launcher:
+   - **macOS**: `~/Desktop/Wynncraft Quicklaunch.command`
+   - **Linux**: `~/.local/share/applications/wynncraft-quicklaunch.desktop`
 
-1. Open Prism Launcher and click into the **Wynncraft-1.21.11** instance once.
-   This lets Prism download the actual Minecraft/Fabric files and prompts you
-   to accept Mojang's EULA. You only need to do this the first time.
-2. Launch a session for your Microsoft account inside Prism at least once so
-   it's cached (Account menu -> Manage Accounts).
+### Running the Services
 
-After that, use the **"Wynncraft (Quick Launch)"** entry in your application
-launcher, or run:
+Start both the Price Dashboard (port 8123) and Bot Controller (port 8124) with:
 
 ```bash
-prismlauncher -l "Wynncraft-1.21.11" -s play.wynncraft.com
+# Start background services
+npm start
+# or: bash scripts/start_all.sh
+
+# Stop background services
+npm stop
+# or: bash scripts/stop_all.sh
 ```
 
-This skips Prism's main window and launches Minecraft straight into the
-Wynncraft server, with Wynntils/Wynnventory already loaded.
+Then visit the unified Web Dashboard in your browser:
+👉 **[http://localhost:8123/bot.html](http://localhost:8123/bot.html)**
+
+### First Launch Checklist
+
+1. Open Prism Launcher once and select **Wynncraft-1.21.11**. This downloads the Minecraft assets and prompts you to accept Mojang's EULA.
+2. Ensure your Microsoft account is active under **Accounts -> Manage Accounts**.
+3. After that, launch Minecraft directly into Wynncraft:
+   - **macOS**: Double-click `~/Desktop/Wynncraft Quicklaunch.command`
+   - **Linux**: Click `Wynncraft (Quick Launch)` in your application menu, or run:
+     ```bash
+     prismlauncher -l "Wynncraft-1.21.11" -s play.wynncraft.com
+     ```
 
 ## Mods installed
 
@@ -155,3 +179,32 @@ been recorded, so early guesses don't overreact to one data point).
 
 This is advisory output only. It recommends what to buy and list; you still
 do the buying and listing yourself, in the real Minecraft client.
+
+## Mineflayer Bot Controller Web App
+
+`dashboard/bot.html` provides a web-based dashboard to control and monitor a
+[Mineflayer](https://github.com/PrismarineJS/mineflayer) bot directly linked to
+your **Prism Launcher** Wynncraft instance and Microsoft account session:
+
+- **Web UI URL**: [http://localhost:8123/bot.html](http://localhost:8123/bot.html)
+  (served directly through `scripts/wynn_price_server.py`).
+- **Prism session linking**: Automatically detects and uses the active Microsoft
+  account (`boredfrom0`) cached in `~/.local/share/PrismLauncher/accounts.json`,
+  bypassing web OAuth prompts when the token is valid.
+- **Vitals & Telemetry HUD**: Displays real-time health, hunger, coordinates,
+  active Wynncraft server (`WC#`), and emerald currency breakdown (LE, EB, E).
+- **Interactive Chat & Dialogue**: Real-time in-game chat stream and formatted NPC
+  dialogues, with in-browser chat input and slash command shortcuts.
+- **Autonomous Pathfinding**: 3D coordinate navigation (`mineflayer-pathfinder`)
+  with quick waypoints for Detlas, Trade Market, Ragni, Llevigar, Lutho, and more.
+- **3D World Visualizer**: Embedded live first/third-person 3D view
+  (`prismarine-viewer`) right in your browser.
+- **Anti-AFK keepalive**: Prevents Wynncraft's 15-minute idle kick via subtle
+  periodic movements.
+- **REST & SSE APIs**: Available at `/api/bot/status`, `/api/bot/events`,
+  `/api/bot/chat`, `/api/bot/goto`, etc., on `http://localhost:8123`.
+
+## Documentation & Guides
+
+- [Human Getting Started Guide](docs/GETTING_STARTED.md) &mdash; Detailed setup, walkthrough of the web interface, in-game controls, REPL dot commands, and troubleshooting.
+- [Agent & API Guide](docs/AGENT_GUIDE.md) &mdash; System architecture, full REST API reference, SSE stream schemas, and programmatic automation recipes.

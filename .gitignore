@@ -1,3 +1,13 @@
 *.key
 .env
+.env.local
 __pycache__/
+*.pyc
+node_modules
+node_modules/
+*/node_modules
+*/node_modules/
+.DS_Store
+*.log
+logs/
+.npm/

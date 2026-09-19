@@ -1,0 +1,25 @@
+{
+  "name": "wynncraft-quicklaunch",
+  "version": "2.2.0",
+  "description": "Wynncraft Quicklaunch & Mineflayer Web Bot Controller with 3D Viewer & AI Insights",
+  "main": "scripts/wynn_bot_server.js",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "start": "bash scripts/start_all.sh",
+    "stop": "bash scripts/stop_all.sh",
+    "bot": "node scripts/wynn_bot_server.js",
+    "dashboard": "python3 scripts/wynn_price_server.py",
+    "textures": "python3 scripts/apply_wynn_textures.py",
+    "test": "bash tests/run_all_tests.sh",
+    "postinstall": "cd mineflayer-wynn && npm install"
+  },
+  "keywords": [
+    "wynncraft",
+    "mineflayer",
+    "minecraft",
+    "prism-launcher",
+    "dashboard",
+    "ai-insights"
+  ],
+  "license": "MIT"
+}
