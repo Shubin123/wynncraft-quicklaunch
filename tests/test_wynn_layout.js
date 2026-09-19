@@ -2,10 +2,16 @@
  * Tests the draggable panel layout: the grid maths, and the DOM behaviour
  * driven against a stub window.
  *
- * The property worth guarding hardest is that reordering never moves a panel
- * in the DOM - the 3D viewport is an iframe, and re-parenting an iframe
- * reloads it, which would drop its socket and every chunk it had meshed. The
- * order is expressed with CSS `order` instead, and a test here holds that.
+ * Two properties are worth guarding hardest:
+ *
+ *  - Reordering never moves a panel in the DOM. The 3D viewport is an iframe,
+ *    and re-parenting an iframe reloads it, dropping its socket and every
+ *    chunk it had meshed. The order is expressed with CSS `order` instead.
+ *  - Dragging runs on pointer events, not HTML5 drag-and-drop. The first
+ *    implementation used the latter and did not work in a real browser, and
+ *    the test that "verified" it dispatched DragEvents straight at elements,
+ *    which skips the hit-testing that was actually broken. These tests drive
+ *    the same sequence a pointer does, through elementFromPoint.
  */
 
 const assert = require('assert');
@@ -109,6 +115,17 @@ function makeNode(tag) {
   node.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200 });
   node.querySelector = (selector) => query(node, selector);
   node.querySelectorAll = (selector) => queryAll(node, selector);
+  node.closest = (selector) => {
+    let current = node;
+    while (current) {
+      if (matches(current, selector)) return current;
+      current = current.parentNode;
+    }
+    return null;
+  };
+  node.contains = (other) => walk(node).includes(other);
+  node.setPointerCapture = () => {};
+  node.releasePointerCapture = () => {};
   Object.defineProperty(node, 'innerHTML', {
     get: () => '',
     set: (html) => {
@@ -193,8 +210,11 @@ function boot({ storage = {}, containerWidth = 1920 } = {}) {
   body.appendChild(container);
 
   const elements = () => walk(body);
+  // The module hit-tests with elementFromPoint; the test says what is there.
+  let pointerTarget = null;
   const document = {
     readyState: 'complete', head, body,
+    elementFromPoint: () => pointerTarget,
     createElement: makeNode,
     querySelector: (sel) => (matches(container, sel) ? container : query(body, sel)),
     querySelectorAll: (sel) => queryAll(body, sel),
@@ -218,7 +238,22 @@ function boot({ storage = {}, containerWidth = 1920 } = {}) {
   vm.runInNewContext(fs.readFileSync(path.join(DASHBOARD, 'wynn-layout.js'), 'utf8'), sandbox,
     { filename: 'wynn-layout.js' });
 
-  return { sandbox, body, container, panels, storage, document };
+  /** Drags one panel's handle onto another, the way a pointer does. */
+  function drag(fromId, toId, { before = true, commit = true } = {}) {
+    const from = document.getElementById(fromId);
+    const to = document.getElementById(toId);
+    const handle = from.querySelector('.wynn-drag-handle');
+    pointerTarget = to.querySelector('.node-header') || to;
+    handle.dispatch('pointerdown', { clientX: 100, clientY: 100, button: 0, pointerType: 'mouse', pointerId: 1 });
+    // The first move is below the threshold: a click must not rearrange.
+    handle.dispatch('pointermove', { clientX: 101, clientY: 100, pointerId: 1 });
+    handle.dispatch('pointermove', { clientX: before ? 150 : 350, clientY: 140, pointerId: 1 });
+    if (commit) handle.dispatch('pointerup', { pointerId: 1 });
+    else handle.dispatch('pointercancel', { pointerId: 1 });
+    return handle;
+  }
+
+  return { sandbox, body, container, panels, storage, document, drag, setPointerTarget: (n) => { pointerTarget = n; } };
 }
 
 test('Installing flattens the rows into one grid and names every panel', () => {
@@ -240,16 +275,43 @@ test('The default order is the order the page was written in', () => {
   assert.strictEqual(sandbox.wynnLayout.state().spans['pw-viewer'], 2, 'default spans come from the markup');
 });
 
+test('A pointer drag rearranges the panels', () => {
+  const { sandbox, drag } = boot();
+  drag('pw-diagnostics-card', 'pw-telemetry', { before: true });
+  const order = JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order));
+  assert.strictEqual(order[0], 'pw-diagnostics-card', 'it lands before the panel it was dropped on');
+  assert.strictEqual(order[1], 'pw-telemetry');
+});
+
+test('Dropping on the right half lands after the target', () => {
+  const { sandbox, drag } = boot();
+  drag('pw-telemetry', 'pw-viewer', { before: false });
+  const order = JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order));
+  assert.deepStrictEqual(order.slice(0, 2), ['pw-viewer', 'pw-telemetry']);
+});
+
+test('A cancelled drag changes nothing', () => {
+  const { sandbox, drag } = boot();
+  const before = JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order));
+  drag('pw-nav', 'pw-telemetry', { commit: false });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order)), before);
+});
+
+test('A click on the handle without movement is not a drag', () => {
+  const { sandbox, document } = boot();
+  const before = JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order));
+  const handle = document.getElementById('pw-nav').querySelector('.wynn-drag-handle');
+  handle.dispatch('pointerdown', { clientX: 100, clientY: 100, button: 0, pointerType: 'mouse', pointerId: 1 });
+  handle.dispatch('pointermove', { clientX: 101, clientY: 101, pointerId: 1 });
+  handle.dispatch('pointerup', { pointerId: 1 });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order)), before);
+});
+
 test('Reordering never moves a panel in the DOM', () => {
-  const { sandbox, container } = boot();
+  const { sandbox, container, drag } = boot();
   const domBefore = container.children.map(c => c.id);
 
-  const dragged = sandbox.document.getElementById('pw-diagnostics-card');
-  const target = sandbox.document.getElementById('pw-telemetry');
-  dragged.querySelector('.wynn-drag-handle').dispatch('dragstart', {
-    dataTransfer: { setData() {}, setDragImage() {} }
-  });
-  target.dispatch('drop', { clientX: 5, dataTransfer: {} });
+  drag('pw-diagnostics-card', 'pw-telemetry', { before: true });
 
   assert.strictEqual(sandbox.wynnLayout.state().order[0], 'pw-diagnostics-card', 'the order changed');
   assert.deepStrictEqual(container.children.map(c => c.id), domBefore,
@@ -262,11 +324,7 @@ test('Reordering never moves a panel in the DOM', () => {
 test('The arrangement is saved and restored', () => {
   const storage = {};
   const first = boot({ storage });
-  const dragged = first.sandbox.document.getElementById('pw-nav');
-  dragged.querySelector('.wynn-drag-handle').dispatch('dragstart', {
-    dataTransfer: { setData() {}, setDragImage() {} }
-  });
-  first.sandbox.document.getElementById('pw-telemetry').dispatch('drop', { clientX: 5, dataTransfer: {} });
+  first.drag('pw-nav', 'pw-telemetry', { before: true });
   const savedOrder = JSON.parse(JSON.stringify(first.sandbox.wynnLayout.state().order));
   assert.strictEqual(savedOrder[0], 'pw-nav');
   assert.ok(storage['wynn:layout:bot.html'], 'it is written under a per-page key');
@@ -303,10 +361,8 @@ test('On a narrow screen a wide panel is clamped to what fits', () => {
 
 test('Reset returns the page to its designed layout', () => {
   const storage = {};
-  const { sandbox, document } = boot({ storage });
-  const dragged = document.getElementById('pw-nav');
-  dragged.querySelector('.wynn-drag-handle').dispatch('dragstart', { dataTransfer: { setData() {}, setDragImage() {} } });
-  document.getElementById('pw-telemetry').dispatch('drop', { clientX: 5, dataTransfer: {} });
+  const { sandbox, document, drag } = boot({ storage });
+  drag('pw-nav', 'pw-telemetry', { before: true });
   assert.strictEqual(sandbox.wynnLayout.state().order[0], 'pw-nav');
 
   document.getElementById('wynn-layout-reset').dispatch('click');
@@ -326,6 +382,13 @@ test('bot.html is wired to the layout module', () => {
   assert.strictEqual((html.match(/data-span=/g) || []).length, 7, 'every panel declares a default width');
   assert.ok(html.includes('window.resetPanelLayout'), 'the existing reset entry point still exists');
   assert.ok(html.includes('max-width: none'), 'the page no longer caps its width short of the screen');
+
+  // Native drag-and-drop did not work in a real browser; pointer events do.
+  const module = fs.readFileSync(path.join(DASHBOARD, 'wynn-layout.js'), 'utf8');
+  assert.ok(module.includes('pointerdown') && module.includes('setPointerCapture'),
+    'dragging must run on pointer events');
+  assert.ok(!/\bdraggable\s*=/.test(module) && !module.includes('dataTransfer.setData'),
+    'no HTML5 drag-and-drop should remain');
 
   // The panels themselves must still be there.
   for (const id of ['pw-telemetry', 'pw-viewer', 'pw-chat', 'pw-ai', 'pw-container', 'pw-nav']) {

@@ -101,7 +101,8 @@
   .wynn-grid > .panel-wrap.wynn-drop-after { box-shadow: 4px 0 0 0 var(--accent, #22c55e); }
   .wynn-drag-handle {
     cursor: grab; user-select: none; color: var(--muted, #94a3b8);
-    font-size: 0.85rem; padding: 0 6px 0 0; line-height: 1;
+    font-size: 0.95rem; padding: 0 8px 0 2px; line-height: 1;
+    touch-action: none; /* the handle owns the gesture, so touch can drag too */
   }
   .wynn-drag-handle:active { cursor: grabbing; }
   .wynn-panel-tools {
@@ -114,11 +115,8 @@
   }
   .wynn-panel-tools button:hover:not(:disabled) { color: var(--text, #f1f5f9); border-color: var(--accent, #22c55e); }
   .wynn-panel-tools button:disabled { opacity: 0.3; cursor: default; }
-  /* Dragging over an iframe swallows the events, so it is covered while dragging. */
-  .wynn-iframe-shield {
-    position: fixed; inset: 0; z-index: 8000; display: none;
-  }
-  body.wynn-dragging-active .wynn-iframe-shield { display: block; }
+  /* While a panel is moving, nothing else should be selecting text. */
+  body.wynn-dragging-active { user-select: none; }
   .wynn-layout-bar {
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
     font-size: 0.78rem; color: var(--muted, #94a3b8); margin-bottom: 12px;
@@ -164,10 +162,6 @@
     for (const panel of panels) {
       defaultSpans[panel.id] = Number(panel.dataset.span) || 1;
     }
-
-    const shield = document.createElement('div');
-    shield.className = 'wynn-iframe-shield';
-    document.body.appendChild(shield);
 
     const state = {
       order: defaultIds.slice(),
@@ -232,6 +226,22 @@
       }
     }
 
+    /**
+     * The panel under the pointer, and which side of it we are on.
+     *
+     * elementFromPoint is a plain hit test, so it works over the 3D viewport's
+     * iframe too - it returns the iframe, whose closest panel is the one we
+     * want. Native HTML5 drag events would have gone into the iframe's own
+     * document instead and never reached us.
+     */
+    function panelUnder(x, y) {
+      const element = document.elementFromPoint(x, y);
+      const panel = element && element.closest ? element.closest('.panel-wrap') : null;
+      if (!panel || panel === dragged || !container.contains(panel)) return null;
+      const rect = panel.getBoundingClientRect();
+      return { panel, before: x < rect.left + rect.width / 2 };
+    }
+
     function wirePanel(panel) {
       const header = panel.querySelector('.node-header') || panel.querySelector('h2') || panel.firstElementChild;
       if (!header) return;
@@ -240,7 +250,6 @@
       handle.className = 'wynn-drag-handle';
       handle.textContent = '⠿';
       handle.title = 'Drag to move this panel';
-      handle.draggable = true;
       const title = header.querySelector('.node-title') || header.firstElementChild || header;
       title.insertBefore(handle, title.firstChild);
 
@@ -256,46 +265,59 @@
       });
       header.appendChild(tools);
 
-      handle.addEventListener('dragstart', (event) => {
-        dragged = panel;
-        panel.classList.add('wynn-dragging');
-        document.body.classList.add('wynn-dragging-active');
-        event.dataTransfer.effectAllowed = 'move';
-        // Firefox needs data set for a drag to start at all.
-        event.dataTransfer.setData('text/plain', panel.id);
-        event.dataTransfer.setDragImage(panel, 20, 20);
+      // Pointer events rather than HTML5 drag-and-drop: they work the same way
+      // for mouse, pen and touch, they survive the pointer crossing an iframe,
+      // and nothing depends on dataTransfer or a browser's drag heuristics.
+      let start = null;
+      let target = null;
+
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 && event.pointerType === 'mouse') return;
+        start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+        event.preventDefault();
+        try { handle.setPointerCapture(event.pointerId); } catch (err) { /* older browsers */ }
       });
 
-      handle.addEventListener('dragend', () => {
-        panel.classList.remove('wynn-dragging');
-        document.body.classList.remove('wynn-dragging-active');
+      handle.addEventListener('pointermove', (event) => {
+        if (!start) return;
+        if (!dragged) {
+          // A few pixels of movement before this becomes a drag, so a stray
+          // click on the handle does not rearrange the page.
+          if (Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) < 4) return;
+          dragged = panel;
+          panel.classList.add('wynn-dragging');
+          document.body.classList.add('wynn-dragging-active');
+        }
+        const over = panelUnder(event.clientX, event.clientY);
+        clearDropMarks();
+        target = over;
+        if (over) over.panel.classList.add(over.before ? 'wynn-drop-before' : 'wynn-drop-after');
+      });
+
+      function finish(commit) {
+        if (start) {
+          try { handle.releasePointerCapture(start.id); } catch (err) { /* already released */ }
+        }
+        if (dragged && commit && target) {
+          state.order = reorder(state.order, dragged.id, target.panel.id, target.before);
+          apply();
+          save();
+        }
+        if (dragged) {
+          dragged.classList.remove('wynn-dragging');
+          document.body.classList.remove('wynn-dragging-active');
+        }
         clearDropMarks();
         dragged = null;
-      });
+        target = null;
+        start = null;
+      }
 
-      panel.addEventListener('dragover', (event) => {
-        if (!dragged || dragged === panel) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        const rect = panel.getBoundingClientRect();
-        const before = event.clientX < rect.left + rect.width / 2;
-        clearDropMarks();
-        panel.classList.add(before ? 'wynn-drop-before' : 'wynn-drop-after');
-      });
-
-      panel.addEventListener('dragleave', () => {
-        panel.classList.remove('wynn-drop-before', 'wynn-drop-after');
-      });
-
-      panel.addEventListener('drop', (event) => {
-        if (!dragged || dragged === panel) return;
-        event.preventDefault();
-        const rect = panel.getBoundingClientRect();
-        const before = event.clientX < rect.left + rect.width / 2;
-        state.order = reorder(state.order, dragged.id, panel.id, before);
-        clearDropMarks();
-        apply();
-        save();
+      handle.addEventListener('pointerup', () => finish(true));
+      handle.addEventListener('pointercancel', () => finish(false));
+      handle.addEventListener('lostpointercapture', () => { if (dragged) finish(true); });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && dragged) finish(false);
       });
     }
 
