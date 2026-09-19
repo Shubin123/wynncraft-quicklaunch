@@ -377,6 +377,40 @@ Looks up Trade Market pricing via the Wynnventory proxy.
 
 ---
 
+### Trade Market (`/api/bot/market*`, port 8124 or proxied via 8123)
+
+| Method | Path | Body | Effect |
+|---|---|---|---|
+| `GET` | `/api/bot/market` | - | Parsed market window: `listings`, `controls`, `slots`, `page`, `distance`, `locations` |
+| `POST` | `/api/bot/market/walk` | `{ location }` | Pathfinds to a market location (`detlas`, `llevigar`, `cinfras`, or `{x,y,z}`) |
+| `POST` | `/api/bot/market/open` | `{ location, walk }` | Walks (unless `walk:false`), interacts with the NPC, waits for the window |
+| `POST` | `/api/bot/market/close` | - | Closes the container |
+| `POST` | `/api/bot/market/search` | `{ query }` | Clicks the search pane and answers the chat prompt |
+| `POST` | `/api/bot/market/next_page` / `prev_page` | - | Pagination controls |
+| `POST` | `/api/bot/market/click` | `{ slot \| role \| name, confirm }` | Clicks a pane; listings require `confirm: true` |
+| `POST` | `/api/bot/market/buy` | `{ slot, confirm: true, maxPrice }` | Buys a listing, refusing above the ceiling |
+
+Every action also pushes a `market` event on `/api/bot/events` (SSE).
+
+> [!WARNING]
+> `click` on a listing and `buy` spend real in-game emeralds and cannot be undone. Both refuse without `confirm: true`.
+
+### Trade engine (`/api/deltas`, `/api/plan`, `/api/model/*`, `/api/evolve`, port 8123)
+
+| Method | Path | Query | Returns |
+|---|---|---|---|
+| `GET` | `/api/deltas` | `items`, `days`, `live` | Per-item edge: `ask`, `fair_value`, `delta`, `roi`, `hold_days`, `score`, `source` |
+| `GET` | `/api/plan` | `items`, `capital`, `slots`, `days` | Capital allocation across sell slots: `legs`, `capital_deployed`, `expected_profit`, `turnover_days` |
+| `GET` | `/api/model/train` | `items`, `horizon`, `epochs`, `hidden` | Trains the forward-return net on walk-forward samples; refuses under 20 samples |
+| `GET` | `/api/model/status` | - | Model shape, feature names, active strategy and its bounds |
+| `GET` | `/api/evolve` | `generations`, `population`, `capital`, `slots`, `save` | Genetic search over strategy parameters, scored by walk-forward backtest |
+
+`source` says which data the ask came from: `live_listing` (the bot's open market
+window), `wynnventory` (upstream aggregate), or `local_history` (last recorded
+price, i.e. stale). Implementation: `scripts/wynn_trade_engine.py`.
+
+---
+
 ## 4. Programmatic Node.js API (`mineflayer-wynn`)
 
 Agents working inside Node.js scripts can require `mineflayer-wynn` directly:

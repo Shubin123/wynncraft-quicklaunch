@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Liquidity &amp; Delta Pipeline</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3; --card: #ffffff; --text: #1c1c1c; --muted: #666; --border: #e4e2dc; --accent: #2e6b3e;
+    --warn-bg: #fff3cd; --warn-text: #7a5c00; --pos: #2e6b3e; --neg: #a32e2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+      --warn-bg: #4d3b00; --warn-text: #ffd666; --pos: #5fbf76; --neg: #e57373;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+    --warn-bg: #4d3b00; --warn-text: #ffd666; --pos: #5fbf76; --neg: #e57373;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-block: 24px; padding-inline: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1rem; margin: 0 0 10px 0; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 0.9rem; }
+  nav.tabs { margin-bottom: 16px; }
+  nav.tabs a { color: var(--muted); text-decoration: none; margin-right: 16px; font-size: 0.9rem; }
+  nav.tabs a.active { color: var(--accent); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  input[type="text"], input[type="number"] {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 0.95rem;
+  }
+  button {
+    margin-top: 10px; padding: 8px 14px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .row > * { flex: 1; min-width: 140px; }
+  .row > button { flex: 0 0 auto; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); }
+  .status { font-size: 0.85rem; color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border); }
+  .warn { display: inline-block; background: var(--warn-bg); color: var(--warn-text); padding: 2px 8px; border-radius: 4px; font-size: 0.78rem; }
+  .totals { display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9rem; margin-bottom: 12px; }
+  .totals div span { display: block; color: var(--muted); font-size: 0.75rem; }
+  .bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
+  details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Liquidity &amp; delta pipeline</h1>
+  <nav class="tabs">
+    <a href="index.html">Price lookup</a>
+    <a href="predict.html">Trend / prediction</a>
+    <a href="optimize.html">Slot optimizer</a>
+    <a href="liquidity.html" class="active">Liquidity</a>
+    <a href="market.html">Trade market</a>
+    <a href="bot.html">Bot controller</a>
+  </nav>
+  <p class="sub">
+    Joins three sources per item: the live ask the bot can see in the in-game Trade Market, Wynnventory's
+    aggregates, and the local price history this dashboard has recorded. The difference between fair value
+    and the ask - after the 5% listing fee - is the delta; the plan moves a fixed amount of capital through
+    the best deltas per day, within your sell slots. Advisory only: it recommends, the bot still needs an
+    explicit confirmation to buy anything.
+  </p>
+
+  <div class="card">
+    <h2>Inputs</h2>
+    <div class="row">
+      <div>
+        <label for="items">Items (comma separated, blank = watchlist)</label>
+        <input type="text" id="items" placeholder="Spring, Wybel Paw" />
+      </div>
+      <div>
+        <label for="capital">Capital in emeralds</label>
+        <input type="number" id="capital" value="32768" min="0" step="1" />
+      </div>
+      <div>
+        <label for="slots">Sell slots</label>
+        <input type="number" id="slots" value="6" min="1" max="12" />
+      </div>
+      <button id="run">Build plan</button>
+      <button id="deltasOnly" class="ghost">Deltas only</button>
+    </div>
+    <div class="status" id="sources" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Plan</h2>
+    <div class="totals" id="totals"><div class="status">Not built yet.</div></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th><th>Source</th><th class="num">Ask</th><th class="num">Fair value</th>
+          <th class="num">Delta</th><th class="num">ROI</th><th class="num">Hold</th>
+          <th class="num">Units</th><th class="num">Spend</th><th class="num">Expected profit</th>
+        </tr>
+      </thead>
+      <tbody id="legs"><tr><td colspan="10" class="status">No plan yet.</td></tr></tbody>
+    </table>
+    <details style="margin-top:10px">
+      <summary>Skipped candidates</summary>
+      <table><tbody id="skipped"></tbody></table>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>All deltas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th><th>Source</th><th class="num">Ask</th><th class="num">Fair value</th>
+          <th class="num">ROI</th><th class="num">Model</th><th class="num">Edge/day</th>
+          <th class="num">Risk</th><th class="num">Points</th><th class="num">Score</th>
+        </tr>
+      </thead>
+      <tbody id="deltas"><tr><td colspan="10" class="status">Nothing computed yet.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Learners</h2>
+    <p class="status" style="margin-top:0">
+      The neural net predicts the forward return from the local series and nudges fair value; its influence is
+      clamped so an undertrained net cannot invent an edge. The genetic algorithm searches the allocator's
+      own parameters against a walk-forward backtest of your recorded history.
+    </p>
+    <div class="row">
+      <div>
+        <label for="horizon">Training horizon (days)</label>
+        <input type="number" id="horizon" value="1" min="0.25" step="0.25" />
+      </div>
+      <div>
+        <label for="epochs">Epochs</label>
+        <input type="number" id="epochs" value="300" min="10" step="10" />
+      </div>
+      <button id="train">Train model</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div>
+        <label for="generations">Generations</label>
+        <input type="number" id="generations" value="10" min="1" max="50" />
+      </div>
+      <div>
+        <label for="population">Population</label>
+        <input type="number" id="population" value="12" min="4" max="40" />
+      </div>
+      <button id="evolve" class="ghost">Evolve strategy</button>
+      <button id="evolveSave">Evolve &amp; save</button>
+    </div>
+    <div id="learners" class="status" style="margin-top:10px">Loading model status…</div>
+  </div>
+
+  <div class="card">
+    <h2>Activity</h2>
+    <div id="log" class="status">Ready.</div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function log(message) {
+    $('log').textContent = `[${new Date().toLocaleTimeString()}] ${message}\n` + $('log').textContent;
+  }
+
+  function escapeHtml(text) {
+    return String(text ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  function formatEmeralds(amount) {
+    if (amount === null || amount === undefined || isNaN(amount)) return '';
+    const units = [['stx', 262144], ['le', 4096], ['eb', 64], ['e', 1]];
+    const sign = amount < 0 ? '-' : '';
+    let left = Math.abs(Math.round(amount));
+    const parts = [];
+    for (const [unit, value] of units) {
+      const count = Math.floor(left / value);
+      if (count > 0) { parts.push(`${count}${unit}`); left -= count * value; }
+    }
+    return sign + (parts.length ? parts.join(' ') : '0e');
+  }
+
+  const percent = (value) => `${(value * 100).toFixed(1)}%`;
+  const signed = (value, text) => `<span class="${value >= 0 ? 'pos' : 'neg'}">${text}</span>`;
+
+  async function get(path) {
+    const res = await fetch(path);
+    return { status: res.status, body: await res.json() };
+  }
+
+  function queryString() {
+    const params = new URLSearchParams();
+    const items = $('items').value.trim();
+    if (items) params.set('items', items);
+    params.set('capital', $('capital').value || '0');
+    params.set('slots', $('slots').value || '6');
+    return params.toString();
+  }
+
+  function renderSources(body) {
+    const bits = [];
+    bits.push(body.live_listings_used
+      ? `<span class="pill">${body.live_listings_used} live in-game asks</span>`
+      : '<span class="pill">no live market window</span>');
+    bits.push(body.model_loaded ? '<span class="pill">model loaded</span>' : '<span class="pill">no model</span>');
+    if (body.candidates !== undefined) bits.push(`${body.candidates} candidates priced`);
+    $('sources').innerHTML = bits.join(' · ');
+  }
+
+  function renderDeltas(deltas) {
+    const body = $('deltas');
+    if (!deltas.length) {
+      body.innerHTML = '<tr><td colspan="10" class="status">No item could be priced.</td></tr>';
+      return;
+    }
+    body.innerHTML = deltas.map(d => `
+      <tr>
+        <td>${escapeHtml(d.item)}</td>
+        <td><span class="pill">${escapeHtml(d.source.replace('_', ' '))}</span></td>
+        <td class="num">${formatEmeralds(d.ask)}</td>
+        <td class="num">${formatEmeralds(d.fair_value)}</td>
+        <td class="num">${signed(d.roi, percent(d.roi))}</td>
+        <td class="num">${signed(d.model_return, percent(d.model_return))}</td>
+        <td class="num">${percent(d.edge_per_day)}</td>
+        <td class="num">${d.risk.toFixed(3)}</td>
+        <td class="num">${d.n_points}</td>
+        <td class="num">${d.score.toFixed(4)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderPlan(plan) {
+    const legs = plan.legs || [];
+    const deployedShare = plan.capital > 0 ? plan.capital_deployed / plan.capital : 0;
+    $('totals').innerHTML = `
+      <div><span>Capital deployed</span>${formatEmeralds(plan.capital_deployed)}
+        <div class="bar"><i style="width:${Math.min(100, deployedShare * 100).toFixed(1)}%"></i></div></div>
+      <div><span>Idle</span>${formatEmeralds(plan.capital_idle)}</div>
+      <div><span>Expected profit</span>${signed(plan.expected_profit, formatEmeralds(plan.expected_profit))}</div>
+      <div><span>Expected ROI</span>${signed(plan.expected_roi, percent(plan.expected_roi))}</div>
+      <div><span>Turnover</span>${plan.turnover_days} days</div>
+      <div><span>Profit / day</span>${formatEmeralds(plan.expected_profit_per_day)}</div>
+      <div><span>Slots used</span>${legs.length} / ${plan.slots}</div>
+    `;
+
+    $('legs').innerHTML = legs.length ? legs.map(leg => `
+      <tr>
+        <td>${escapeHtml(leg.item)}</td>
+        <td><span class="pill">${escapeHtml(leg.source.replace('_', ' '))}</span></td>
+        <td class="num">${formatEmeralds(leg.ask)}</td>
+        <td class="num">${formatEmeralds(leg.fair_value)}</td>
+        <td class="num">${signed(leg.delta, formatEmeralds(leg.delta))}</td>
+        <td class="num">${signed(leg.roi, percent(leg.roi))}</td>
+        <td class="num">${leg.hold_days}d</td>
+        <td class="num">${leg.units}</td>
+        <td class="num">${formatEmeralds(leg.spend)}</td>
+        <td class="num">${signed(leg.expected_profit, formatEmeralds(leg.expected_profit))}</td>
+      </tr>
+    `).join('') : '<tr><td colspan="10" class="status">Nothing cleared the minimum edge with this capital.</td></tr>';
+
+    const skipped = plan.skipped || [];
+    $('skipped').innerHTML = skipped.length
+      ? skipped.map(s => `<tr><td>${escapeHtml(s.item)}</td><td class="status">${escapeHtml(s.reason)}</td></tr>`).join('')
+      : '<tr><td class="status">Nothing was skipped.</td></tr>';
+  }
+
+  async function buildPlan() {
+    $('run').disabled = true;
+    log('Building plan…');
+    const { status, body } = await get(`/api/plan?${queryString()}`);
+    $('run').disabled = false;
+    if (status !== 200) { log(`Plan failed: ${body.error}`); return; }
+    renderSources(body);
+    renderPlan(body);
+    log(`Plan: ${body.legs.length} legs, ${formatEmeralds(body.capital_deployed)} deployed, ` +
+        `${formatEmeralds(body.expected_profit)} expected profit.`);
+    loadDeltas();
+  }
+
+  async function loadDeltas() {
+    const { status, body } = await get(`/api/deltas?${queryString()}`);
+    if (status !== 200) { log(`Deltas failed: ${body.error}`); return; }
+    renderSources(body);
+    renderDeltas(body.deltas);
+    return body;
+  }
+
+  async function loadLearners() {
+    const { body } = await get('/api/model/status');
+    const strategy = body.strategy || {};
+    const shape = body.layer_sizes ? body.layer_sizes.join('→') : 'not trained';
+    $('learners').innerHTML =
+      `Model: <b>${escapeHtml(shape)}</b> · features: ${body.features.length} · ` +
+      `strategy: ` + Object.entries(strategy)
+        .map(([key, value]) => `${escapeHtml(key)}=${Number(value).toFixed(3)}`).join(', ');
+  }
+
+  $('run').onclick = buildPlan;
+  $('deltasOnly').onclick = () => { log('Computing deltas…'); loadDeltas(); };
+
+  $('train').onclick = async () => {
+    $('train').disabled = true;
+    log('Training the forward-return model…');
+    const params = new URLSearchParams();
+    const items = $('items').value.trim();
+    if (items) params.set('items', items);
+    params.set('horizon', $('horizon').value || '1');
+    params.set('epochs', $('epochs').value || '300');
+    const { status, body } = await get(`/api/model/train?${params}`);
+    $('train').disabled = false;
+    if (status !== 200) { log(`Training declined: ${body.error}`); return; }
+    log(`Trained on ${body.samples} samples: MSE ${body.first_mse} → ${body.final_mse}.`);
+    loadLearners();
+  };
+
+  async function runEvolution(save) {
+    $('evolve').disabled = $('evolveSave').disabled = true;
+    log(`Evolving strategy${save ? ' (will save the winner)' : ''}…`);
+    const params = new URLSearchParams();
+    const items = $('items').value.trim();
+    if (items) params.set('items', items);
+    params.set('generations', $('generations').value || '10');
+    params.set('population', $('population').value || '12');
+    params.set('capital', $('capital').value || '32768');
+    params.set('slots', $('slots').value || '6');
+    if (save) params.set('save', '1');
+    const { status, body } = await get(`/api/evolve?${params}`);
+    $('evolve').disabled = $('evolveSave').disabled = false;
+    if (status !== 200) { log(`Evolution declined: ${body.error}`); return; }
+    log(`Best fitness ${body.best_fitness} after ${body.generations} generations ` +
+        `(baseline backtest ROI ${percent(body.baseline_backtest.roi)}, ` +
+        `evolved ${percent(body.best_backtest.roi)}).`);
+    if (save) loadLearners();
+  }
+
+  $('evolve').onclick = () => runEvolution(false);
+  $('evolveSave').onclick = () => runEvolution(true);
+
+  loadLearners();
+</script>
+</body>
+</html>

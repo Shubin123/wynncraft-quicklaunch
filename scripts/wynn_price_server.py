@@ -13,6 +13,7 @@ import json
 import math
 import os
 import random
+import sys
 import threading
 import time
 import subprocess
@@ -21,6 +22,10 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import wynn_trade_engine as engine
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 KEY_FILE = Path.home() / ".config" / "wynn-dashboard" / "wynnventory.key"
@@ -392,6 +397,72 @@ def optimize_slots(estimates: list[dict], capital: float, slots: int) -> dict:
     }
 
 
+BOT_SERVER_URL = "http://127.0.0.1:8124"
+
+
+def fetch_live_listings(timeout: float = 2.0) -> dict[str, dict]:
+    """Cheapest live ask per item, scraped from the bot's open Trade Market window.
+
+    This is the third leg of the data join: Wynnventory tells us what an item is
+    worth on average, the local history tells us where it has been going, and
+    this tells us what it actually costs to buy right now, in front of the bot.
+    Returns {} whenever the bot is offline or has no market window open, which
+    is the normal case - callers fall back to Wynnventory's lowest listing.
+    """
+    try:
+        with urllib.request.urlopen(f"{BOT_SERVER_URL}/api/bot/market", timeout=timeout) as resp:
+            body = json.loads(resp.read())
+    except Exception:
+        return {}
+
+    listings = body.get("listings") or []
+    cheapest: dict[str, dict] = {}
+    for listing in listings:
+        name = (listing.get("customName") or listing.get("name") or "").strip()
+        price = listing.get("price")
+        if not name or not price:
+            continue
+        key = name.lower()
+        current = cheapest.get(key)
+        if current is None or price < current["price"]:
+            cheapest[key] = {
+                "item": name,
+                "price": price,
+                "amount": listing.get("amount"),
+                "seller": listing.get("seller"),
+                "slot": listing.get("slot"),
+                "tier": listing.get("tier"),
+            }
+    return cheapest
+
+
+def build_deltas(items: list[str], use_live: bool = True, days: float = 30,
+                 model=None, strategy: dict | None = None) -> tuple[list[dict], list[dict]]:
+    """Computes one delta per item, joining all three data sources."""
+    live_listings = fetch_live_listings() if use_live else {}
+    deltas = []
+    skipped = []
+    for item in items:
+        status, price_body, _ = get_cached_price(item)
+        aggregate = price_body if status == 200 else None
+        points = read_history(item, days)
+        live_listing = live_listings.get(item.lower())
+        live_ask = live_listing["price"] if live_listing else None
+
+        if aggregate is None and not points and live_ask is None:
+            skipped.append({"item": item, "reason": (price_body or {}).get("error", f"status {status}")})
+            continue
+
+        delta = engine.compute_delta(item, points, aggregate, live_ask, model, strategy)
+        if delta is None:
+            skipped.append({"item": item, "reason": "not enough price data to value this item"})
+            continue
+        if live_listing:
+            delta["live_listing"] = live_listing
+        deltas.append(delta)
+    return deltas, skipped
+
+
 def load_watchlist() -> list[str]:
     with _watchlist_lock:
         if not WATCHLIST_FILE.exists():
@@ -502,6 +573,11 @@ class Handler(BaseHTTPRequestHandler):
             "/api/watch/add": self._handle_watch_add,
             "/api/watch/remove": self._handle_watch_remove,
             "/api/optimize": self._handle_optimize,
+            "/api/deltas": self._handle_deltas,
+            "/api/plan": self._handle_plan,
+            "/api/model/train": self._handle_model_train,
+            "/api/model/status": self._handle_model_status,
+            "/api/evolve": self._handle_evolve,
             "/api/record_outcome": self._handle_record_outcome,
         }
         handler = routes.get(parsed.path)
@@ -575,6 +651,161 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._json(200, result)
+
+    def _candidate_items(self, params) -> list[str]:
+        raw = (params.get("items") or [""])[0]
+        items = [item.strip() for item in raw.split(",") if item.strip()]
+        return items or load_watchlist()
+
+    def _handle_deltas(self, parsed):
+        """Per-item edge: fair value (Wynnventory + local trend + model) vs the ask."""
+        params = urllib.parse.parse_qs(parsed.query)
+        items = self._candidate_items(params)
+        if not items:
+            self._json(400, {"error": "no candidate items - pass ?items=a,b,c or populate the watchlist"})
+            return
+
+        days = float((params.get("days") or ["30"])[0])
+        use_live = (params.get("live") or ["1"])[0] != "0"
+        model = engine.MLP.load()
+        strategy = engine.load_strategy()
+
+        deltas, skipped = build_deltas(items, use_live, days, model, strategy)
+        deltas.sort(key=lambda d: d["score"], reverse=True)
+        live_count = sum(1 for d in deltas if d["source"] == "live_listing")
+        self._json(200, {
+            "deltas": deltas,
+            "skipped": skipped,
+            "strategy": strategy,
+            "model_loaded": model is not None,
+            "live_listings_used": live_count,
+            "market_fee": engine.MARKET_FEE,
+        })
+
+    def _handle_plan(self, parsed):
+        """Turns the deltas into a capital allocation across sell slots."""
+        params = urllib.parse.parse_qs(parsed.query)
+        try:
+            capital = float((params.get("capital") or ["32768"])[0])
+            slots = int((params.get("slots") or ["6"])[0])
+            days = float((params.get("days") or ["30"])[0])
+        except ValueError:
+            self._json(400, {"error": "capital must be a number (emeralds), slots an integer"})
+            return
+
+        items = self._candidate_items(params)
+        if not items:
+            self._json(400, {"error": "no candidate items - pass ?items=a,b,c or populate the watchlist"})
+            return
+
+        use_live = (params.get("live") or ["1"])[0] != "0"
+        model = engine.MLP.load()
+        strategy = engine.load_strategy()
+
+        deltas, skipped = build_deltas(items, use_live, days, model, strategy)
+        plan = engine.plan_liquidity(deltas, capital, slots, strategy)
+        plan["skipped"] = plan["skipped"] + skipped
+        plan["model_loaded"] = model is not None
+        plan["live_listings_used"] = sum(1 for d in deltas if d["source"] == "live_listing")
+        plan["candidates"] = len(deltas)
+        self._json(200, plan)
+
+    def _handle_model_train(self, parsed):
+        """Trains the forward-return net on walk-forward samples from local history."""
+        params = urllib.parse.parse_qs(parsed.query)
+        try:
+            horizon = float((params.get("horizon") or ["1"])[0])
+            epochs = int((params.get("epochs") or ["300"])[0])
+            hidden = int((params.get("hidden") or ["6"])[0])
+            days = float((params.get("days") or ["90"])[0])
+        except ValueError:
+            self._json(400, {"error": "horizon/days must be numbers, epochs/hidden integers"})
+            return
+
+        items = self._candidate_items(params)
+        samples = []
+        per_item = {}
+        for item in items:
+            item_samples = engine.build_training_samples(read_history(item, days), horizon)
+            per_item[item] = len(item_samples)
+            samples.extend(item_samples)
+
+        # Under ~20 samples a net this size just memorises noise; say so instead
+        # of shipping a model that looks trained.
+        if len(samples) < 20:
+            self._json(400, {
+                "error": f"only {len(samples)} walk-forward samples available; "
+                         "keep the watchlist poller running to accumulate history first",
+                "samples_per_item": per_item,
+                "minimum_samples": 20,
+            })
+            return
+
+        model = engine.MLP([len(engine.FEATURE_NAMES), hidden, 1], seed=1337)
+        report = model.train(samples, epochs=epochs, learning_rate=0.02, seed=1337)
+        model.save()
+        self._json(200, {
+            "ok": True,
+            "model_file": str(engine.MODEL_FILE),
+            "samples_per_item": per_item,
+            "horizon_days": horizon,
+            **report,
+        })
+
+    def _handle_model_status(self, parsed):
+        model = engine.MLP.load()
+        self._json(200, {
+            "model_loaded": model is not None,
+            "model_file": str(engine.MODEL_FILE),
+            "layer_sizes": model.layer_sizes if model else None,
+            "features": engine.FEATURE_NAMES,
+            "strategy": engine.load_strategy(),
+            "strategy_file": str(engine.STRATEGY_FILE),
+            "strategy_bounds": engine.STRATEGY_BOUNDS,
+        })
+
+    def _handle_evolve(self, parsed):
+        """Evolves the allocator's strategy parameters against a walk-forward backtest."""
+        params = urllib.parse.parse_qs(parsed.query)
+        try:
+            generations = min(int((params.get("generations") or ["10"])[0]), 50)
+            population = min(int((params.get("population") or ["12"])[0]), 40)
+            capital = float((params.get("capital") or ["32768"])[0])
+            slots = int((params.get("slots") or ["6"])[0])
+            days = float((params.get("days") or ["90"])[0])
+        except ValueError:
+            self._json(400, {"error": "generations/population/slots must be integers"})
+            return
+
+        items = self._candidate_items(params)
+        series_by_item = {item: read_history(item, days) for item in items}
+        series_by_item = {item: points for item, points in series_by_item.items() if len(points) >= 4}
+        if not series_by_item:
+            self._json(400, {
+                "error": "no item has at least 4 local history points yet; "
+                         "the evolutionary search has nothing to score against",
+                "items_checked": items,
+            })
+            return
+
+        model = engine.MLP.load()
+        result = engine.evolve_strategy(series_by_item, generations, population, model,
+                                        capital, slots, seed=int(time.time()))
+        baseline = engine.backtest_strategy(series_by_item, engine.DEFAULT_STRATEGY, model, capital, slots)
+        best = engine.backtest_strategy(series_by_item, result["best_strategy"], model, capital, slots)
+
+        saved = (params.get("save") or ["0"])[0] == "1"
+        if saved:
+            engine.save_strategy(result["best_strategy"])
+
+        self._json(200, {
+            **result,
+            "items": list(series_by_item),
+            "baseline_backtest": baseline,
+            "best_backtest": best,
+            "saved": saved,
+            "strategy_file": str(engine.STRATEGY_FILE),
+        })
 
     def _handle_optimize(self, parsed):
         params = urllib.parse.parse_qs(parsed.query)
@@ -691,7 +922,8 @@ if __name__ == "__main__":
 
     # Ensure WynnBot API service is running on 8124
     bot_server_script = Path(__file__).resolve().parent / "wynn_bot_server.js"
-    if bot_server_script.is_file():
+    # Tests and read-only runs set WYNN_NO_AUTOSPAWN so this never starts a bot.
+    if bot_server_script.is_file() and os.environ.get("WYNN_NO_AUTOSPAWN") != "1":
         try:
             with urllib.request.urlopen("http://127.0.0.1:8124/api/bot/status", timeout=1):
                 pass

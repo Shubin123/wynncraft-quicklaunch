@@ -17,6 +17,13 @@ NODE_PATH_PARTS=(
 )
 export NODE_PATH="$(IFS=:; echo "${NODE_PATH_PARTS[*]}")"
 
+# Prefer the project venv (Pillow lives there on macOS/Homebrew Python).
+if [[ -x "$REPO_DIR/.venv/bin/python3" ]]; then
+  PYTHON_BIN="$REPO_DIR/.venv/bin/python3"
+else
+  PYTHON_BIN="python3"
+fi
+
 echo "=================================================="
 echo "  Wynncraft Quick Launch & Bot Controller Tests   "
 echo "=================================================="
@@ -30,13 +37,19 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_viewer.js"
 # 2. Trade Market controller (no running server needed)
 node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 
-# 3. Module Tests
+# 3. Trade engine: features, neural net, GA, delta pipeline
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
+
+# 4. Trade engine HTTP endpoints (starts a throwaway price server)
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
+
+# 5. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 4. Integration Tests
+# 6. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 5. E2E Tests
+# 7. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="
