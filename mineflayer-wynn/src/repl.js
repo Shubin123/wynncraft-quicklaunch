@@ -78,6 +78,7 @@ function startRepl(botContext) {
           safeLog(`  .goto <x> <y> <z>    Pathfind to coordinates`);
           safeLog(`  .stop                Stop pathfinding navigation`);
           safeLog(`  .antiafk [on|off]    Toggle anti-AFK movement`);
+          safeLog(`  .account [name]      Show accounts, or lock the bot to one ('.account off' to unlock)`);
           safeLog(`  .market [location]   Walk to the Trade Market and open it`);
           safeLog(`  .listings            Show the listings in the open market window`);
           safeLog(`  .find <item>         Search the open Trade Market for an item`);
@@ -186,6 +187,37 @@ function startRepl(botContext) {
             safeLog(`Anti-AFK enabled.`);
           }
           break;
+
+        case 'account': {
+          const prismLink = require('./prism');
+          if (args.length === 0) {
+            const selection = prismLink.getAccountSelection();
+            safeLog(`\x1b[1mPrism accounts:\x1b[0m`);
+            for (const account of selection.accounts) {
+              const marks = [
+                selection.account && selection.account.uuid === account.uuid ? 'bot' : null,
+                account.active ? 'Prism active' : null,
+                account.isTokenValid ? null : 'token expired'
+              ].filter(Boolean);
+              safeLog(`  ${account.name}${marks.length ? `  (${marks.join(', ')})` : ''}`);
+            }
+            safeLog(`  Source: ${selection.source}${selection.lock ? ` -> ${selection.lock.name}` : ''}`);
+            for (const warning of selection.warnings) safeLog(`  \x1b[33m! ${warning}\x1b[0m`);
+            break;
+          }
+          if (args[0] === 'off' || args[0] === 'unlock' || args[0] === 'none') {
+            prismLink.clearAccountLock();
+            safeLog(`Account lock released; the bot follows Prism's active account again.`);
+            break;
+          }
+          const result = prismLink.setAccountLock(args.join(' '));
+          if (!result.ok) {
+            safeLog(`${result.error}. Available: ${result.available.map(a => a.name).join(', ')}`);
+          } else {
+            safeLog(`Locked to "${result.account.name}". Takes effect on the next connect; this session keeps its own.`);
+          }
+          break;
+        }
 
         case 'market': {
           if (!bot.market) {

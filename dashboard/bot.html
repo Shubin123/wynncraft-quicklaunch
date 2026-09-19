@@ -564,12 +564,26 @@
           <!-- Account & Instance Details -->
           <div style="background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:0.82rem">
             <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-              <span style="color:var(--muted)">Prism Account:</span>
+              <span style="color:var(--muted)">Bot Account:</span>
               <strong id="account-name">boredfrom0</strong>
             </div>
-            <div style="display:flex;justify-content:space-between">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="color:var(--muted)">Prism Active:</span>
+              <span id="prism-active-name">-</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
               <span style="color:var(--muted)">Instance:</span>
               <span id="instance-name">Wynncraft-1.21.11</span>
+            </div>
+
+            <!-- Optional account lock: pins the bot to one account so switching
+                 accounts in Prism (to watch it in game) leaves the bot alone. -->
+            <div style="border-top:1px solid var(--border);padding-top:7px">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="account-lock-select" style="flex:1;min-width:150px;font-size:0.8rem;padding:4px 6px"></select>
+                <button class="secondary small" id="account-lock-btn" onclick="toggleAccountLock()">Lock</button>
+              </div>
+              <div id="account-lock-note" style="margin-top:6px;color:var(--muted);font-size:0.75rem"></div>
             </div>
           </div>
 
@@ -1015,6 +1029,7 @@
   // Initialize
   window.addEventListener('DOMContentLoaded', () => {
     loadWaypoints();
+    loadAccountChoices();
     fetchStatus();
     fetchWindow();
     fetchInsights();
@@ -1115,6 +1130,10 @@
       }
     }
 
+    if (data.account) {
+      renderAccountLock(data.account);
+    }
+
     // Vitals
     statHp.textContent = `${data.health}/20`;
     statFood.textContent = `${data.food}/20`;
@@ -1158,6 +1177,91 @@
     if (data.recentLogs && activityLogs.length === 0) {
       data.recentLogs.forEach(l => appendLogMessage(l));
     }
+  }
+
+  let accountState = null;
+
+  /**
+   * Shows which account the bot uses versus which one Prism has active, and
+   * offers the lock that keeps the two independent.
+   */
+  function renderAccountLock(account) {
+    accountState = account;
+    const select = document.getElementById('account-lock-select');
+    const button = document.getElementById('account-lock-btn');
+    const note = document.getElementById('account-lock-note');
+    const prismActiveName = document.getElementById('prism-active-name');
+    if (!select || !button || !note) return;
+
+    prismActiveName.textContent = account.prismActive ? account.prismActive.name : '-';
+    if (account.using) document.getElementById('account-name').textContent = account.using.name;
+
+    if (account.locked) {
+      button.textContent = 'Unlock';
+      button.classList.add('active');
+      select.disabled = true;
+      const lockedName = (account.lock && account.lock.name) || (account.using && account.using.name) || '?';
+      note.innerHTML = account.source === 'env'
+        ? `Pinned to <b>${lockedName}</b> by WYNN_BOT_ACCOUNT; unset it to change this here.`
+        : `Locked to <b>${lockedName}</b>. Switching accounts in Prism will not move the bot.`;
+    } else {
+      button.textContent = 'Lock';
+      button.classList.remove('active');
+      select.disabled = false;
+      note.textContent = account.prismActive
+        ? 'Following Prism. Switching accounts in Prism switches the bot too - lock it to keep them apart.'
+        : 'No Prism accounts found.';
+    }
+
+    if (account.sameAsPrismActive) {
+      note.innerHTML += ' <span style="color:var(--gold)">Prism is on this same account; logging in there will kick the bot.</span>';
+    }
+    for (const warning of account.warnings || []) {
+      if (/expired/i.test(warning)) {
+        note.innerHTML += ` <span style="color:var(--danger)">${warning}.</span>`;
+      }
+    }
+  }
+
+  async function loadAccountChoices() {
+    const select = document.getElementById('account-lock-select');
+    if (!select) return;
+    try {
+      const res = await fetch('/api/bot/accounts');
+      const data = await res.json();
+      if (!data.ok) return;
+      const chosen = select.value;
+      select.innerHTML = data.accounts.map(account =>
+        `<option value="${account.uuid}">${account.name}${account.prismActive ? ' (Prism active)' : ''}` +
+        `${account.isTokenValid ? '' : ' - token expired'}</option>`
+      ).join('');
+      const current = data.accounts.find(a => a.usedByBot);
+      select.value = chosen || (current ? current.uuid : select.value);
+    } catch (e) {
+      // The bot server may be restarting; the next status poll retries.
+    }
+  }
+
+  async function toggleAccountLock() {
+    const select = document.getElementById('account-lock-select');
+    const locked = accountState && accountState.locked;
+    const path = locked ? '/api/bot/account/unlock' : '/api/bot/account/lock';
+    const body = locked ? {} : { account: select.value };
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      appendLogMessage({ category: 'ACCOUNT', message: data.error || 'Account lock failed' });
+      return;
+    }
+    if (data.note) {
+      appendLogMessage({ category: 'ACCOUNT', message: data.note });
+    }
+    await loadAccountChoices();
+    fetchStatus();
   }
 
   function reloadViewer() {

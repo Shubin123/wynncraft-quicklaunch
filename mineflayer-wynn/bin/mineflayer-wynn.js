@@ -25,6 +25,7 @@ program
   .option('-v, --version <version>', 'Minecraft version (default: from Prism instance, e.g. 1.21.11)')
   .option('-a, --auth <mode>', 'Auth mode: "prism" (use cached Prism session), "microsoft", or "offline"', 'prism')
   .option('-u, --username <name>', 'Player username override')
+  .option('--account <name|uuid>', 'Use this Prism account for this run, whichever one Prism has active')
   .option('-c, --character <slot>', 'Auto-select character slot or class on login')
   .option('--viewer [port]', 'Start 3D web visualizer on specified port (default: 3000)')
   .option('--anti-afk', 'Enable anti-AFK movements', false)

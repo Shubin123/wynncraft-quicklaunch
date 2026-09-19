@@ -177,13 +177,149 @@ function getPrismAccounts() {
 }
 
 /**
- * Gets the active or primary Microsoft account from Prism.
+ * Where the bot's account lock lives.
+ *
+ * Deliberately outside Prism's own files: the whole point is that switching
+ * the active account in Prism - to watch the bot from inside the game on a
+ * second account - must not move the bot with it. Prism rewrites accounts.json
+ * when you switch; this file it never touches.
+ */
+function getAccountLockFile() {
+  return process.env.WYNN_BOT_ACCOUNT_FILE ||
+    path.join(os.homedir(), '.config', 'wynn-dashboard', 'bot-account.json');
+}
+
+/** UUIDs appear with and without dashes depending on where they came from. */
+function normalizeUuid(value) {
+  return String(value || '').toLowerCase().replace(/-/g, '');
+}
+
+/**
+ * Matches an account by UUID or by name, case-insensitively. UUID wins:
+ * names can be changed, and two accounts can briefly share one.
+ */
+function accountMatches(account, identifier) {
+  if (!account || !identifier) return false;
+  const wanted = String(identifier).trim();
+  if (!wanted) return false;
+  if (account.uuid && normalizeUuid(account.uuid) === normalizeUuid(wanted)) return true;
+  return (account.name || '').toLowerCase() === wanted.toLowerCase();
+}
+
+function findAccount(accounts, identifier) {
+  if (!identifier) return null;
+  const byUuid = accounts.find(a => a.uuid && normalizeUuid(a.uuid) === normalizeUuid(identifier));
+  if (byUuid) return byUuid;
+  return accounts.find(a => accountMatches(a, identifier)) || null;
+}
+
+/**
+ * Reads the persisted lock, or null when the bot simply follows Prism.
+ */
+function readAccountLock() {
+  const file = getAccountLockFile();
+  if (!fs.existsSync(file)) return null;
+  try {
+    const lock = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!lock || (!lock.uuid && !lock.name)) return null;
+    return lock;
+  } catch (err) {
+    // A corrupt lock must not stop the bot connecting at all.
+    console.warn(`[Prism Link] Ignoring unreadable account lock at ${file}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Pins the bot to one account. Accepts a UUID or a name; stores both so the
+ * lock survives a rename and still reads well in the dashboard.
+ */
+function setAccountLock(identifier) {
+  const accounts = getPrismAccounts();
+  const account = findAccount(accounts, identifier);
+  if (!account) {
+    return {
+      ok: false,
+      error: `No Prism account matches "${identifier}"`,
+      available: accounts.map(a => ({ name: a.name, uuid: a.uuid }))
+    };
+  }
+
+  const lock = { uuid: account.uuid, name: account.name, lockedAt: new Date().toISOString() };
+  const file = getAccountLockFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(lock, null, 2));
+  return { ok: true, lock, account };
+}
+
+/**
+ * Releases the lock; the bot goes back to following Prism's active account.
+ */
+function clearAccountLock() {
+  const file = getAccountLockFile();
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  return { ok: true, lock: null };
+}
+
+/**
+ * Works out which account the bot should use, and says why.
+ *
+ * Order: an explicit WYNN_BOT_ACCOUNT for a one-off run, then the persisted
+ * lock, then whatever Prism currently has active.
+ */
+function getAccountSelection() {
+  const accounts = getPrismAccounts();
+  const prismActive = accounts.find(a => a.active) || accounts[0] || null;
+  const warnings = [];
+
+  if (accounts.length === 0) {
+    return { account: null, source: 'none', lock: null, prismActive: null, accounts, warnings };
+  }
+
+  const envIdentifier = process.env.WYNN_BOT_ACCOUNT;
+  if (envIdentifier) {
+    const account = findAccount(accounts, envIdentifier);
+    if (account) {
+      return { account, source: 'env', lock: null, prismActive, accounts, warnings };
+    }
+    warnings.push(`WYNN_BOT_ACCOUNT="${envIdentifier}" matches no Prism account; ignoring it`);
+  }
+
+  const lock = readAccountLock();
+  if (lock) {
+    const account = findAccount(accounts, lock.uuid || lock.name);
+    if (account) {
+      if (prismActive && account.uuid === prismActive.uuid) {
+        warnings.push(`Prism is also set to "${account.name}"; logging in there will kick the bot`);
+      }
+      if (!account.isTokenValid) {
+        warnings.push(`The locked account "${account.name}" has an expired session; open it once in Prism to refresh`);
+      }
+      return { account, source: 'lock', lock, prismActive, accounts, warnings };
+    }
+    warnings.push(`Locked account "${lock.name || lock.uuid}" is no longer in Prism; following the active account instead`);
+  }
+
+  if (!lock && accounts.length > 1) {
+    warnings.push('No account lock: switching accounts in Prism will switch the bot too');
+  }
+
+  return {
+    account: prismActive,
+    source: prismActive && prismActive.active ? 'prism-active' : 'prism-first',
+    lock: null,
+    prismActive,
+    accounts,
+    warnings
+  };
+}
+
+/**
+ * Gets the account the bot should use: the locked one when a lock is set,
+ * otherwise whatever Prism has active.
  */
 function getActiveAccount() {
-  const accounts = getPrismAccounts();
-  if (accounts.length === 0) return null;
-  const active = accounts.find(a => a.active);
-  return active || accounts[0];
+  return getAccountSelection().account;
 }
 
 /**
@@ -257,6 +393,13 @@ module.exports = {
   getWynnInstance,
   getPrismAccounts,
   getActiveAccount,
+  getAccountSelection,
+  getAccountLockFile,
+  readAccountLock,
+  setAccountLock,
+  clearAccountLock,
+  findAccount,
+  accountMatches,
   createPrismAuth,
   getWynntilsData,
   checkQuicklaunchServer

@@ -232,7 +232,10 @@ class BotManager extends EventEmitter {
   }
 
   getStatus() {
-    const activeAccount = prism?.getActiveAccount();
+    const accountSelection = prism?.getAccountSelection
+      ? (tryGet(() => prism.getAccountSelection()) || null)
+      : null;
+    const activeAccount = accountSelection ? accountSelection.account : prism?.getActiveAccount();
     const wynnInstance = prism ? (tryGet(() => prism.getWynnInstance()) || null) : null;
     const availableGates = this.getGates();
     const availableCharacters = this.bot?.wynn?.availableCharacters || [];
@@ -267,6 +270,27 @@ class BotManager extends EventEmitter {
       currentActionBar: this.currentActionBar || this.bot?.wynn?.currentActionBar || '',
       filteredSpamCount: this.filteredSpamCount,
       recentLogs: this.systemLogs.slice(-25),
+      account: accountSelection ? {
+        // Which account the bot will use, and why - so the dashboard can say
+        // whether switching accounts in Prism would drag the bot along.
+        using: accountSelection.account ? {
+          name: accountSelection.account.name,
+          uuid: accountSelection.account.uuid,
+          isTokenValid: accountSelection.account.isTokenValid,
+          validMinutesRemaining: Math.round(accountSelection.account.validSecondsRemaining / 60)
+        } : null,
+        source: accountSelection.source,
+        locked: accountSelection.source === 'lock' || accountSelection.source === 'env',
+        lock: accountSelection.lock || null,
+        prismActive: accountSelection.prismActive ? {
+          name: accountSelection.prismActive.name,
+          uuid: accountSelection.prismActive.uuid
+        } : null,
+        followsPrism: accountSelection.source === 'prism-active' || accountSelection.source === 'prism-first',
+        sameAsPrismActive: !!(accountSelection.account && accountSelection.prismActive &&
+          accountSelection.account.uuid === accountSelection.prismActive.uuid),
+        warnings: accountSelection.warnings
+      } : null,
       prism: {
         instance: wynnInstance?.name || 'Wynncraft-1.21.11',
         minecraftVersion: wynnInstance?.minecraftVersion || '1.21.11',
@@ -803,6 +827,63 @@ class BotManager extends EventEmitter {
   }
 
   /**
+   * All Prism accounts, with which one the bot uses and which one Prism has
+   * active - the two are independent once a lock is set.
+   */
+  getAccounts() {
+    if (!prism?.getAccountSelection) {
+      return { ok: false, error: 'Prism integration is unavailable', accounts: [] };
+    }
+    const selection = prism.getAccountSelection();
+    return {
+      ok: true,
+      source: selection.source,
+      locked: selection.source === 'lock' || selection.source === 'env',
+      lock: selection.lock || null,
+      lockFile: prism.getAccountLockFile(),
+      warnings: selection.warnings,
+      accounts: selection.accounts.map(account => ({
+        name: account.name,
+        uuid: account.uuid,
+        type: account.type,
+        prismActive: account.active,
+        usedByBot: !!(selection.account && selection.account.uuid === account.uuid),
+        isTokenValid: account.isTokenValid,
+        validMinutesRemaining: Math.round(account.validSecondsRemaining / 60),
+        hasToken: account.hasToken
+      }))
+    };
+  }
+
+  /**
+   * Pins the bot to one account, or releases it.
+   *
+   * A running bot keeps the session it connected with; the lock decides what
+   * the next connect uses, so this never yanks a live bot off its account.
+   */
+  setAccountLock(identifier) {
+    if (!prism?.setAccountLock) {
+      return { ok: false, error: 'Prism integration is unavailable' };
+    }
+    const result = identifier ? prism.setAccountLock(identifier) : prism.clearAccountLock();
+    if (!result.ok) return result;
+
+    if (identifier) {
+      this.addLog('ACCOUNT', `Bot locked to Prism account "${result.account.name}" - switching accounts in Prism no longer moves the bot`);
+    } else {
+      this.addLog('ACCOUNT', 'Account lock released; the bot follows Prism\'s active account again');
+    }
+
+    const state = this.getAccounts();
+    if (this.status === 'connected' && identifier && this.bot?.username &&
+        result.account.name !== this.bot.username) {
+      state.note = `The bot stays connected as "${this.bot.username}" until you reconnect it`;
+    }
+    this.broadcastSSE('status', this.getStatus());
+    return { ...result, ...state };
+  }
+
+  /**
    * Just the bot's position, for pollers like the viewer's tracking camera
    * that would otherwise pull the whole status payload several times a second.
    */
@@ -1163,6 +1244,10 @@ const server = http.createServer(async (req, res) => {
       return json(200, { entities: manager.getEntities() });
     }
 
+    if (pathname === '/api/bot/accounts') {
+      return json(200, manager.getAccounts());
+    }
+
     if (pathname === '/api/bot/position') {
       return json(200, manager.getPosition());
     }
@@ -1302,6 +1387,18 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/server') {
       const result = manager.switchServer(body.server || 'hub');
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/account/lock') {
+      const identifier = body.account || body.uuid || body.name;
+      if (!identifier) return json(400, { ok: false, error: 'Missing account (name or uuid)' });
+      const result = manager.setAccountLock(identifier);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/account/unlock') {
+      const result = manager.setAccountLock(null);
       return json(result.ok ? 200 : 400, result);
     }
 

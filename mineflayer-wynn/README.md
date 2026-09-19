@@ -94,6 +94,47 @@ Options:
 
 ---
 
+## Account Lock (playing alongside the bot)
+
+By default the bot uses whichever account Prism Launcher has active. That is
+fine until you want to watch it from inside the game: switching Prism to your
+second account switches the bot too, and if both end up on the same account the
+manual login kicks the bot off.
+
+The lock pins the bot to one account, independently of Prism:
+
+```bash
+mineflayer-wynn run --account MagicianGoneMad   # this run only
+WYNN_BOT_ACCOUNT=MagicianGoneMad npm run bot    # this process only
+```
+
+```
+.account            # list accounts, show which the bot uses and which Prism has active
+.account Alice      # lock the bot to Alice (persists)
+.account off        # release the lock
+```
+
+Dashboard: the Bot Account panel has a picker and a Lock button, and shows the
+Prism active account next to the bot's so you can see at a glance whether they
+are the same. API: `GET /api/bot/accounts`, `POST /api/bot/account/lock`
+(`{account}` - name or UUID), `POST /api/bot/account/unlock`.
+
+Details worth knowing:
+
+- The lock lives in `~/.config/wynn-dashboard/bot-account.json`, outside
+  Prism's own files, because Prism rewrites `accounts.json` when you switch.
+  `WYNN_BOT_ACCOUNT_FILE` moves it.
+- It stores the UUID as well as the name, so a rename does not break it.
+- Changing the lock never disturbs a running bot: it decides what the *next*
+  connect uses.
+- Resolution order: `--account`, then `WYNN_BOT_ACCOUNT`, then the saved lock,
+  then Prism's active account.
+- The bot still needs a valid cached session for the locked account. If that
+  account has not been opened in Prism for a while its token expires; the
+  status and the dashboard say so, and `--auth microsoft` remains the fallback.
+
+Run `node tests/test_account_lock.js` to verify the behaviour.
+
 ## Trade Market (auction house)
 
 `src/market.js` attaches a Trade Market controller as `bot.market`. It walks to

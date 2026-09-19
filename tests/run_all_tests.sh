@@ -37,30 +37,34 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_viewer.js"
 # 2. Viewer wire check: what the browser actually receives on the socket
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_wire.js"
 
-# 3. Viewer character-tracking overlay (helpers, install, and rendering)
+# 3. Prism account lock (module behaviour and HTTP surface)
+node "$REPO_DIR/mineflayer-wynn/tests/test_account_lock.js"
+node "$SCRIPT_DIR/test_account_api.js"
+
+# 4. Viewer character-tracking overlay (helpers, install, and rendering)
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_overlay.js"
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_overlay_render.js"
 
-# 4. Trade Market controller (no running server needed)
+# 5. Trade Market controller (no running server needed)
 node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 
-# 5. Inventory / chest pane (helpers and rendering against a DOM stub)
+# 6. Inventory / chest pane (helpers and rendering against a DOM stub)
 node "$SCRIPT_DIR/test_inventory_pane.js"
 node "$SCRIPT_DIR/test_inventory_render.js"
 
-# 6. Trade engine: features, neural net, GA, delta pipeline
+# 7. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 7. Trade engine HTTP endpoints (starts a throwaway price server)
+# 8. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 8. Module Tests
+# 9. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 9. Integration Tests
+# 10. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 10. E2E Tests
+# 11. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

@@ -377,6 +377,23 @@ Looks up Trade Market pricing via the Wynnventory proxy.
 
 ---
 
+### Account lock (`/api/bot/accounts`, `/api/bot/account/*`)
+
+| Method | Path | Body | Effect |
+|---|---|---|---|
+| `GET` | `/api/bot/accounts` | - | Every Prism account with `prismActive`, `usedByBot`, token validity, plus the active lock and its file |
+| `POST` | `/api/bot/account/lock` | `{ account }` (name or UUID) | Pins the bot to that account regardless of which one Prism has active |
+| `POST` | `/api/bot/account/unlock` | - | Releases the lock; the bot follows Prism again |
+
+`GET /api/bot/status` carries the same picture under `account`: `using`,
+`source` (`lock` \| `env` \| `prism-active` \| `prism-first`), `prismActive`,
+`followsPrism`, `sameAsPrismActive` and `warnings`.
+
+The lock exists so you can switch accounts in Prism - to watch the bot from
+inside the game on a second account - without the web server switching with
+it. It is stored outside Prism's files and changing it affects the next
+connect, never a running session.
+
 ### Trade Market (`/api/bot/market*`, port 8124 or proxied via 8123)
 
 | Method | Path | Body | Effect |

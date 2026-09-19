@@ -32,10 +32,34 @@ function createWynnBot(userOptions = {}) {
   let activeAccount = null;
 
   if (authMode === 'prism') {
-    activeAccount = prism.getActiveAccount();
+    // The account can be pinned (--account, WYNN_BOT_ACCOUNT, or a saved lock)
+    // so switching accounts in Prism to play alongside the bot leaves it alone.
+    let selection;
+    if (userOptions.account) {
+      const accounts = prism.getPrismAccounts();
+      const account = prism.findAccount(accounts, userOptions.account);
+      selection = account
+        ? { account, source: 'option', warnings: [] }
+        : { account: null, source: 'option', warnings: [`No Prism account matches "${userOptions.account}"`] };
+    } else {
+      selection = prism.getAccountSelection();
+    }
+
+    for (const warning of selection.warnings) {
+      console.warn(`\x1b[33m[Prism Link]\x1b[0m ${warning}`);
+    }
+    const sourceLabel = {
+      option: 'pinned by --account',
+      env: 'pinned by WYNN_BOT_ACCOUNT',
+      lock: 'locked',
+      'prism-active': 'Prism active account',
+      'prism-first': 'first Prism account'
+    }[selection.source] || selection.source;
+
+    activeAccount = selection.account;
     if (activeAccount && activeAccount.hasToken) {
       if (activeAccount.isTokenValid) {
-        console.log(`\x1b[32m[Prism Link]\x1b[0m Using cached session for account: \x1b[1m${activeAccount.name}\x1b[0m (valid for ${Math.round(activeAccount.validSecondsRemaining / 60)} min)`);
+        console.log(`\x1b[32m[Prism Link]\x1b[0m Using cached session for account: \x1b[1m${activeAccount.name}\x1b[0m (${sourceLabel}, valid for ${Math.round(activeAccount.validSecondsRemaining / 60)} min)`);
         authHandler = prism.createPrismAuth(activeAccount);
         botUsername = activeAccount.name;
       } else {
