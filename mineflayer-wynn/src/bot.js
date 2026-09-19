@@ -6,6 +6,7 @@ const autoEat = require('mineflayer-auto-eat');
 const prism = require('./prism');
 const { wynncraftPlugin } = require('./wynncraft');
 const { attachViewer } = require('./viewer');
+const { attachMarket } = require('./market');
 
 /**
  * Creates and initializes a Mineflayer bot linked to the Prism Wynncraft setup.
@@ -120,7 +121,12 @@ function createWynnBot(userOptions = {}) {
     }
   });
 
-  // 8. Attach 3D Viewer if requested
+  // 8. Attach the Trade Market controller (bot.market)
+  attachMarket(bot, {
+    location: userOptions.marketLocation || 'detlas'
+  });
+
+  // 9. Attach 3D Viewer if requested
   if (userOptions.viewer) {
     bot.once('spawn', () => {
       const viewerPort = typeof userOptions.viewer === 'number' ? userOptions.viewer : 3000;
@@ -128,7 +134,7 @@ function createWynnBot(userOptions = {}) {
     });
   }
 
-  // 9. Standard bot lifecycle events
+  // 10. Standard bot lifecycle events
   bot.on('login', () => {
     console.log(`\x1b[32m[Mineflayer]\x1b[0m Successfully logged in as \x1b[1m${bot.username}\x1b[0m`);
   });

@@ -94,6 +94,41 @@ Options:
 
 ---
 
+## Trade Market (auction house)
+
+`src/market.js` attaches a Trade Market controller as `bot.market`. It walks to
+a market location, opens the auction window and reads or clicks its panes:
+
+```js
+await bot.market.walkTo('detlas');        // pathfind to the market NPC
+const opened = await bot.market.open();   // walk (if needed), interact, wait for the window
+bot.market.scan();                        // { listings, controls, slots, page, isMarket }
+await bot.market.search('Spring');        // clicks the search pane, answers the chat prompt
+await bot.market.nextPage();
+await bot.market.buy({ slot: 10 }, { confirm: true, maxPrice: 16 * 4096 });
+bot.market.close();
+```
+
+Panes are classified by item name and lore text, never by fixed slot number:
+Wynncraft moves market controls between updates, and a stale slot hint would
+silently click the wrong pane. A pane is a `listing` when its lore quotes a
+price, a `control` when its name matches a known role (`search`, `next_page`,
+`sell`, `confirm`, ...), and `filler` otherwise.
+
+Prices parse from Wynncraft's `stx`/`le`/`eb`/`e` notation into plain emeralds
+(`parseEmeralds`, `formatEmeralds`), so listings can be compared against
+Wynnventory data directly.
+
+Buying spends real in-game emeralds and cannot be undone, so `click` on a
+listing and `buy` both refuse without `confirm: true`, and `buy` also honours an
+optional `maxPrice` ceiling.
+
+REPL: `.market [location]`, `.listings`, `.find <item>`.
+Bot server: `GET /api/bot/market` plus `POST /api/bot/market/{walk,open,close,search,next_page,prev_page,click,buy}`.
+Dashboard: the **Trade market** tab renders the auction panes as a grid.
+
+Run `node tests/test_market.js` to verify the pane parsing and the guards.
+
 ## 3D Viewer Rendering Version
 
 Wynncraft (WynnProxy) speaks protocol 775, which Mineflayer knows as Minecraft

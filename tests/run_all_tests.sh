@@ -27,13 +27,16 @@ echo ""
 # 1. Mineflayer viewer block-state translation (no running server needed)
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer.js"
 
-# 2. Module Tests
+# 2. Trade Market controller (no running server needed)
+node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
+
+# 3. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 3. Integration Tests
+# 4. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 4. E2E Tests
+# 5. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

@@ -46,6 +46,7 @@ for (const g of candidateGlobalDirs) {
 
 // Require mineflayer-wynn components
 let prism, createWynnBot, stripFormatting, attachViewer, parseChatComponent, extractCleanText, cleanWynncraftText;
+let parseMarketWindow, formatEmeralds, MARKET_LOCATIONS;
 try {
   let mf = null;
   if (resolvedMfDir && fs.existsSync(path.join(resolvedMfDir, 'src', 'index.js'))) {
@@ -62,6 +63,9 @@ try {
   parseChatComponent = mf.parseChatComponent;
   extractCleanText = mf.extractCleanText;
   cleanWynncraftText = mf.cleanWynncraftText;
+  parseMarketWindow = mf.parseMarketWindow;
+  formatEmeralds = mf.formatEmeralds;
+  MARKET_LOCATIONS = mf.MARKET_LOCATIONS;
 } catch (e) {
   console.error('Failed to load mineflayer-wynn:', e);
 }
@@ -441,6 +445,17 @@ class BotManager extends EventEmitter {
         this.startIdleWindowChecker();
       });
 
+      this.bot.on('market:open', () => {
+        this.broadcastSSE('market', this.getMarket());
+      });
+
+      this.bot.on('market:buy', ({ pane }) => {
+        const price = formatEmeralds ? formatEmeralds(pane?.price) : pane?.price;
+        this.addChatMessage('system', 'Market', `Bought "${pane?.customName}" for ${price}`);
+        this.addLog('MARKET', `Bought "${pane?.customName}" for ${price} from slot ${pane?.slot}`);
+        this.broadcastSSE('market', this.getMarket());
+      });
+
       this.bot.on('windowOpen', (win) => {
         const winData = this.getWindow();
         const winId = win?.id ?? '?';
@@ -784,6 +799,83 @@ class BotManager extends EventEmitter {
     return { ok: true, message: 'No container window open' };
   }
 
+  /**
+   * Reads the Trade Market window the bot currently has open.
+   */
+  getMarket() {
+    if (!this.bot || this.status !== 'connected') {
+      return { ok: false, open: false, error: 'Bot is not connected', locations: MARKET_LOCATIONS || {} };
+    }
+    const scan = this.bot.market
+      ? this.bot.market.scan()
+      : (parseMarketWindow ? parseMarketWindow(this.bot.currentWindow) : { open: false });
+    return {
+      ok: true,
+      locations: MARKET_LOCATIONS || {},
+      distance: this.bot.market ? this.bot.market.distanceTo() : null,
+      walking: this.bot.market ? this.bot.market.walking : false,
+      ...scan
+    };
+  }
+
+  /**
+   * Runs one Trade Market action, keeping the dashboard and logs in sync.
+   */
+  async marketAction(action, body = {}) {
+    if (!this.bot || this.status !== 'connected') {
+      return { ok: false, error: 'Bot is not connected' };
+    }
+    if (!this.bot.market) {
+      return { ok: false, error: 'Market controller is not attached to this bot' };
+    }
+
+    const market = this.bot.market;
+    let result;
+    try {
+      switch (action) {
+        case 'walk':
+          this.addLog('MARKET', `Walking to the ${body.location || market.defaultLocation} Trade Market...`);
+          result = await market.walkTo(body.location, body);
+          break;
+        case 'open':
+          this.addLog('MARKET', `Opening the Trade Market (${body.location || market.defaultLocation})...`);
+          result = await market.open(body);
+          break;
+        case 'close':
+          result = market.close();
+          break;
+        case 'search':
+          this.addLog('MARKET', `Searching the Trade Market for "${body.query}"...`);
+          result = await market.search(body.query, body);
+          break;
+        case 'next_page':
+          result = await market.nextPage(body);
+          break;
+        case 'prev_page':
+          result = await market.prevPage(body);
+          break;
+        case 'click':
+          result = await market.click(body.selector ?? body, body);
+          break;
+        case 'buy':
+          result = await market.buy(body.selector ?? body, body);
+          break;
+        default:
+          return { ok: false, error: `Unknown market action: ${action}` };
+      }
+    } catch (err) {
+      this.addLog('MARKET', `Market action "${action}" failed: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+
+    if (result && result.ok === false && result.error) {
+      this.addLog('MARKET', `Market action "${action}" rejected: ${result.error}`);
+    }
+    const snapshot = this.getMarket();
+    this.broadcastSSE('market', snapshot);
+    return { ...result, market: snapshot };
+  }
+
   disconnect() {
     this.stopAntiAfk();
     this.stopIdleWindowChecker();
@@ -1046,6 +1138,10 @@ const server = http.createServer(async (req, res) => {
       return json(200, { entities: manager.getEntities() });
     }
 
+    if (pathname === '/api/bot/market') {
+      return json(200, manager.getMarket());
+    }
+
     if (pathname === '/api/bot/waypoints') {
       return json(200, { waypoints: WAYPOINTS });
     }
@@ -1177,6 +1273,12 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/server') {
       const result = manager.switchServer(body.server || 'hub');
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname.startsWith('/api/bot/market/')) {
+      const action = pathname.slice('/api/bot/market/'.length);
+      const result = await manager.marketAction(action, body);
       return json(result.ok ? 200 : 400, result);
     }
 

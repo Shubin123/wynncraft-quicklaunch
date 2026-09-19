@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Wynncraft Trade Market</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f6f3; --card: #ffffff; --text: #1c1c1c; --muted: #666; --border: #e4e2dc; --accent: #2e6b3e;
+    --warn-bg: #fff3cd; --warn-text: #7a5c00;
+    --listing: #2e6b3e; --control: #1d4ed8; --filler: #9a9a9a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+      --warn-bg: #4d3b00; --warn-text: #ffd666;
+      --listing: #5fbf76; --control: #7aa2f7; --filler: #555;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a1a; --card: #242424; --text: #f0f0ee; --muted: #aaa; --border: #3a3a3a; --accent: #5fbf76;
+    --warn-bg: #4d3b00; --warn-text: #ffd666;
+    --listing: #5fbf76; --control: #7aa2f7; --filler: #555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-block: 24px; padding-inline: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1rem; margin: 0 0 10px 0; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 0.9rem; }
+  nav.tabs { margin-bottom: 16px; }
+  nav.tabs a { color: var(--muted); text-decoration: none; margin-right: 16px; font-size: 0.9rem; }
+  nav.tabs a.active { color: var(--accent); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 6px; color: var(--muted); }
+  input[type="text"], input[type="number"], select {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 0.95rem;
+  }
+  button {
+    margin-top: 10px; padding: 8px 14px; border-radius: 6px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+  }
+  button.small { padding: 4px 10px; font-size: 0.8rem; margin-top: 0; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .row > * { flex: 1; min-width: 140px; }
+  .row > button { flex: 0 0 auto; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status { font-size: 0.85rem; color: var(--muted); }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border); }
+  .pill.on { background: var(--accent); color: #fff; border-color: transparent; }
+  .warn { display: inline-block; background: var(--warn-bg); color: var(--warn-text); padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }
+  a.link { color: var(--accent); }
+
+  .grid-scroll { overflow-x: auto; }
+  .gui {
+    display: grid; grid-template-columns: repeat(9, minmax(52px, 1fr));
+    gap: 4px; min-width: 500px;
+  }
+  .slot {
+    aspect-ratio: 1; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); padding: 3px; font-size: 0.6rem; line-height: 1.15;
+    overflow: hidden; cursor: pointer; text-align: left; color: var(--text);
+    margin: 0; font-weight: 400;
+  }
+  .slot:hover { border-color: var(--accent); }
+  .slot .idx { color: var(--muted); font-size: 0.55rem; }
+  .slot.listing { border-color: var(--listing); }
+  .slot.control { border-color: var(--control); }
+  .slot.filler { opacity: 0.35; cursor: default; }
+  .slot.empty { opacity: 0.2; cursor: default; }
+  .slot .price { color: var(--listing); font-weight: 600; }
+  .legend { font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
+  .legend b { font-weight: 600; }
+  #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; max-height: 160px; overflow-y: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trade Market</h1>
+  <nav class="tabs">
+    <a href="index.html">Price lookup</a>
+    <a href="predict.html">Trend / prediction</a>
+    <a href="optimize.html">Slot optimizer</a>
+    <a href="market.html" class="active">Trade market</a>
+    <a href="bot.html">Bot controller</a>
+  </nav>
+  <p class="sub">
+    Drives the in-game Trade Market with the connected bot: walks to the market NPC, opens the auction
+    window, and reads its panes. Panes are matched by name and lore rather than by slot number, so a
+    Wynncraft layout change shows up as an unrecognised pane instead of a wrong click. Buying spends real
+    emeralds and is never automatic - every purchase needs an explicit confirmation and an optional price ceiling.
+  </p>
+
+  <div class="card">
+    <h2>Bot &amp; market state</h2>
+    <div id="state" class="status">Loading…</div>
+    <div class="row" style="margin-top:12px">
+      <div>
+        <label for="location">Market location</label>
+        <select id="location"></select>
+      </div>
+      <button id="walk" class="ghost">Walk there</button>
+      <button id="open">Open market</button>
+      <button id="close" class="ghost">Close window</button>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Search &amp; pages</h2>
+    <div class="row">
+      <div>
+        <label for="query">Item name (sent to the market's chat prompt)</label>
+        <input type="text" id="query" placeholder="e.g. Spring" />
+      </div>
+      <button id="search">Search</button>
+      <button id="prev" class="ghost">◀ Prev page</button>
+      <button id="next" class="ghost">Next page ▶</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Auction panes</h2>
+    <div class="grid-scroll"><div class="gui" id="gui"></div></div>
+    <div class="legend">
+      <b style="color:var(--listing)">Green</b> listing (click to buy, with confirmation) ·
+      <b style="color:var(--control)">Blue</b> control pane (click to activate) ·
+      grey filler or empty. Hover a pane for its full lore.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Listings <span id="listing-count" class="pill"></span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <div>
+        <label for="ceiling">Price ceiling in emeralds (blank = no ceiling)</label>
+        <input type="number" id="ceiling" min="0" step="1" placeholder="e.g. 65536" />
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Slot</th><th>Item</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th></th></tr>
+      </thead>
+      <tbody id="listings"><tr><td colspan="8" class="status">No market window open.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Activity</h2>
+    <div id="log" class="status">Ready.</div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let latest = null;
+
+  function log(message) {
+    const now = new Date().toLocaleTimeString();
+    $('log').textContent = `[${now}] ${message}\n` + $('log').textContent;
+  }
+
+  /**
+   * Renders emerald amounts the way Wynncraft writes them.
+   */
+  function formatEmeralds(amount) {
+    if (amount === null || amount === undefined || isNaN(amount)) return '';
+    const units = [['stx', 262144], ['le', 4096], ['eb', 64], ['e', 1]];
+    let left = Math.max(0, Math.round(amount));
+    const parts = [];
+    for (const [unit, value] of units) {
+      const count = Math.floor(left / value);
+      if (count > 0) { parts.push(`${count}${unit}`); left -= count * value; }
+    }
+    return parts.length ? parts.join(' ') : '0e';
+  }
+
+  async function get(path) {
+    const res = await fetch(path);
+    return res.json();
+  }
+
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    return res.json();
+  }
+
+  function renderState(data) {
+    const bits = [];
+    if (!data.ok) {
+      bits.push(`<span class="warn">${data.error || 'unavailable'}</span>`);
+    } else {
+      bits.push(data.open
+        ? `<span class="pill on">window open</span> ${data.title || 'container'}`
+        : '<span class="pill">no window open</span>');
+      if (data.isMarket === false && data.open) bits.push('<span class="warn">not a market window</span>');
+      if (data.page) bits.push(`page ${data.page}`);
+      if (typeof data.distance === 'number') bits.push(`${data.distance.toFixed(1)} blocks from the market`);
+      if (data.walking) bits.push('<span class="pill on">walking</span>');
+    }
+    $('state').innerHTML = bits.join(' · ');
+  }
+
+  function paneLabel(slot) {
+    if (slot.kind === 'empty') return `<span class="idx">${slot.slot}</span>`;
+    const name = (slot.customName || slot.name || '').slice(0, 28);
+    const price = slot.kind === 'listing' ? `<div class="price">${formatEmeralds(slot.price)}</div>` : '';
+    return `<span class="idx">${slot.slot}</span><div>${escapeHtml(name)}</div>${price}`;
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  function renderGui(data) {
+    const gui = $('gui');
+    gui.innerHTML = '';
+    if (!data.ok || !data.open || !Array.isArray(data.slots)) {
+      gui.innerHTML = '<div class="status" style="grid-column:1/-1">No container window open.</div>';
+      return;
+    }
+    for (const slot of data.slots) {
+      const button = document.createElement('button');
+      button.className = `slot ${slot.kind}`;
+      button.innerHTML = paneLabel(slot);
+      const lore = (slot.lore || []).join('\n');
+      button.title = [slot.customName || slot.name, lore, `slot ${slot.slot} · ${slot.kind}${slot.role ? ' · ' + slot.role : ''}`]
+        .filter(Boolean).join('\n');
+      if (slot.kind === 'listing') {
+        button.onclick = () => buy(slot);
+      } else if (slot.kind === 'control' || slot.kind === 'item') {
+        button.onclick = () => clickPane(slot);
+      } else {
+        button.disabled = true;
+      }
+      gui.appendChild(button);
+    }
+  }
+
+  function renderListings(data) {
+    const body = $('listings');
+    const listings = (data.ok && data.listings) || [];
+    $('listing-count').textContent = listings.length ? `${listings.length} shown` : '';
+    if (!listings.length) {
+      body.innerHTML = '<tr><td colspan="8" class="status">No listings in the open window.</td></tr>';
+      return;
+    }
+    body.innerHTML = listings.map(listing => `
+      <tr>
+        <td class="num">${listing.slot}</td>
+        <td>${escapeHtml(listing.customName || listing.name)}</td>
+        <td>${escapeHtml(listing.tier || '')}</td>
+        <td class="num">${formatEmeralds(listing.price)}</td>
+        <td class="num">${listing.price ?? ''}</td>
+        <td class="num">${listing.amount ?? ''}</td>
+        <td>${escapeHtml(listing.seller || '')}</td>
+        <td><button class="small" data-slot="${listing.slot}">Buy</button></td>
+      </tr>
+    `).join('');
+    for (const button of body.querySelectorAll('button[data-slot]')) {
+      const slot = parseInt(button.dataset.slot, 10);
+      button.onclick = () => buy(listings.find(l => l.slot === slot));
+    }
+  }
+
+  function render(data) {
+    latest = data;
+    renderState(data);
+    renderGui(data);
+    renderListings(data);
+  }
+
+  async function refresh() {
+    render(await get('/api/bot/market'));
+  }
+
+  async function run(label, path, body) {
+    log(`${label}…`);
+    const result = await post(path, body);
+    if (result.market) render(result.market);
+    if (result.ok) {
+      log(`${label}: ok`);
+    } else {
+      log(`${label}: ${result.error || 'failed'}`);
+    }
+    return result;
+  }
+
+  async function clickPane(slot) {
+    await run(`Click slot ${slot.slot} (${slot.role || slot.kind})`, '/api/bot/market/click', { slot: slot.slot });
+  }
+
+  async function buy(listing) {
+    if (!listing) return;
+    const ceilingRaw = $('ceiling').value.trim();
+    const maxPrice = ceilingRaw === '' ? undefined : Number(ceilingRaw);
+    const price = formatEmeralds(listing.price);
+    const ok = window.confirm(
+      `Buy "${listing.customName || listing.name}" for ${price} (${listing.price} emeralds)?\n\n` +
+      'This spends real in-game emeralds and cannot be undone.'
+    );
+    if (!ok) return;
+    await run(`Buy slot ${listing.slot} for ${price}`, '/api/bot/market/buy', {
+      slot: listing.slot,
+      confirm: true,
+      maxPrice
+    });
+  }
+
+  async function loadLocations() {
+    const data = await get('/api/bot/market');
+    const select = $('location');
+    const locations = data.locations || {};
+    select.innerHTML = Object.entries(locations)
+      .map(([key, loc]) => `<option value="${key}">${escapeHtml(loc.name)} (${loc.x}, ${loc.y}, ${loc.z})</option>`)
+      .join('');
+    render(data);
+  }
+
+  $('walk').onclick = () => run('Walk to market', '/api/bot/market/walk', { location: $('location').value });
+  $('open').onclick = () => run('Open market', '/api/bot/market/open', { location: $('location').value });
+  $('close').onclick = () => run('Close window', '/api/bot/market/close', {});
+  $('refresh').onclick = refresh;
+  $('next').onclick = () => run('Next page', '/api/bot/market/next_page', {});
+  $('prev').onclick = () => run('Previous page', '/api/bot/market/prev_page', {});
+  $('search').onclick = () => {
+    const query = $('query').value.trim();
+    if (!query) { log('Enter an item name to search for.'); return; }
+    run(`Search "${query}"`, '/api/bot/market/search', { query });
+  };
+  $('query').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') $('search').click();
+  });
+
+  // The bot server pushes a 'market' event after every market action, and the
+  // window contents change server-side too (other players buying listings).
+  const events = new EventSource('/api/bot/events');
+  events.addEventListener('market', (event) => {
+    try { render(JSON.parse(event.data)); } catch (e) { /* keep the last render */ }
+  });
+  events.addEventListener('window_close', () => refresh());
+
+  loadLocations();
+  setInterval(refresh, 10000);
+</script>
+</body>
+</html>

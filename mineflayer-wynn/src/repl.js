@@ -78,6 +78,9 @@ function startRepl(botContext) {
           safeLog(`  .goto <x> <y> <z>    Pathfind to coordinates`);
           safeLog(`  .stop                Stop pathfinding navigation`);
           safeLog(`  .antiafk [on|off]    Toggle anti-AFK movement`);
+          safeLog(`  .market [location]   Walk to the Trade Market and open it`);
+          safeLog(`  .listings            Show the listings in the open market window`);
+          safeLog(`  .find <item>         Search the open Trade Market for an item`);
           safeLog(`  .say <msg>           Send in-game chat message (or just type directly)`);
           safeLog(`  .exit / .quit        Disconnect bot and exit`);
           break;
@@ -183,6 +186,65 @@ function startRepl(botContext) {
             safeLog(`Anti-AFK enabled.`);
           }
           break;
+
+        case 'market': {
+          if (!bot.market) {
+            safeLog(`Market controller is not attached to this bot.`);
+            break;
+          }
+          const location = args[0] || undefined;
+          safeLog(`Walking to the ${location || bot.market.defaultLocation} Trade Market...`);
+          const opened = await bot.market.open({ location });
+          if (!opened.ok) {
+            safeLog(`Could not open the market: ${opened.error}`);
+          } else {
+            safeLog(`Trade Market open: ${opened.market.listings.length} listings, ${opened.market.controls.length} controls.`);
+          }
+          break;
+        }
+
+        case 'listings': {
+          if (!bot.market) {
+            safeLog(`Market controller is not attached to this bot.`);
+            break;
+          }
+          const scan = bot.market.scan();
+          if (!scan.open) {
+            safeLog(`No container window is open. Run .market first.`);
+            break;
+          }
+          if (!scan.listings.length) {
+            safeLog(`No listings in "${scan.title}".`);
+            break;
+          }
+          safeLog(`\x1b[1m${scan.title}${scan.page ? ` (page ${scan.page})` : ''}:\x1b[0m`);
+          for (const listing of scan.listings) {
+            const amount = listing.amount > 1 ? ` x${listing.amount}` : '';
+            const seller = listing.seller ? ` from ${listing.seller}` : '';
+            safeLog(`  [${String(listing.slot).padStart(2)}] ${listing.customName}${amount} - ${listing.priceText}${seller}`);
+          }
+          break;
+        }
+
+        case 'find': {
+          if (!bot.market) {
+            safeLog(`Market controller is not attached to this bot.`);
+            break;
+          }
+          if (args.length === 0) {
+            safeLog(`Usage: .find <item name>`);
+            break;
+          }
+          const query = args.join(' ');
+          safeLog(`Searching the Trade Market for "${query}"...`);
+          const found = await bot.market.search(query);
+          if (!found.ok) {
+            safeLog(`Search failed: ${found.error}`);
+          } else {
+            safeLog(`${found.market.listings.length} listings matched. Run .listings to see them.`);
+          }
+          break;
+        }
 
         case 'say':
           bot.chat(args.join(' '));
