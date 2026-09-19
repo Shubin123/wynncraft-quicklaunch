@@ -190,13 +190,74 @@ def _():
     assert compute_delta("test", series([100]), {"lowest_price": 0}) is None, "a zero ask is not tradeable"
 
 
-@test("A thin listing pool implies a longer hold than a thick one")
+@test("Without measurements, a thin listing pool implies a longer hold")
 def _():
     features = build_features(series([100, 105, 110]))
-    thin = estimate_hold_days(features, {"total_count": 1}, DEFAULT_STRATEGY)
-    thick = estimate_hold_days(features, {"total_count": 200}, DEFAULT_STRATEGY)
+    thin, thin_source, thin_samples = estimate_hold_days(features, {"total_count": 1}, DEFAULT_STRATEGY)
+    thick, _, _ = estimate_hold_days(features, {"total_count": 200}, DEFAULT_STRATEGY)
     assert thin > thick, f"thin pool {thin} should hold longer than thick pool {thick}"
     assert thick >= 0.25 and thin <= DEFAULT_STRATEGY["hold_days_cap"]
+    assert thin_source == "heuristic", "with nothing observed it is still a guess, and says so"
+    assert thin_samples == 0
+
+
+@test("Observed lifetimes replace the guess, in proportion to the evidence")
+def _():
+    features = build_features(series([100, 105, 110]))
+    live = {"total_count": 1}  # the heuristic would call this slow to sell
+    heuristic, _, _ = estimate_hold_days(features, live, DEFAULT_STRATEGY)
+    assert heuristic > 3, f"a one-listing pool should look slow: {heuristic}"
+
+    # One observation of a fast sale nudges, but does not take over.
+    nudged, source, samples = estimate_hold_days(
+        features, live, DEFAULT_STRATEGY, {"days": 0.5, "samples": 1})
+    assert source == "blended" and samples == 1
+    assert nudged < heuristic, "evidence of a fast sale should shorten the estimate"
+    assert nudged > 0.5, "a single observation must not fully displace the prior"
+
+    # Enough observations and the measurement stands on its own.
+    measured, source, samples = estimate_hold_days(
+        features, live, DEFAULT_STRATEGY, {"days": 0.5, "samples": 12})
+    assert source == "measured" and samples == 12
+    assert abs(measured - 0.5) < 1e-9, measured
+
+    # More evidence moves further from the guess, monotonically.
+    previous = heuristic
+    for count in [1, 2, 3, 4, 5]:
+        value, _, _ = estimate_hold_days(features, live, DEFAULT_STRATEGY,
+                                         {"days": 0.5, "samples": count})
+        assert value <= previous + 1e-9, f"{count} samples moved back toward the guess"
+        previous = value
+
+    # An observation of a slow sale lengthens it just the same.
+    slow, _, _ = estimate_hold_days(features, {"total_count": 200}, DEFAULT_STRATEGY,
+                                    {"days": 9.0, "samples": 12})
+    assert slow > 5, f"a measured slow seller should read slow: {slow}"
+
+    # Junk measurements are ignored rather than trusted.
+    for junk in [{"days": None, "samples": 9}, {"days": 2.0, "samples": 0}, {}, None]:
+        value, source, _ = estimate_hold_days(features, live, DEFAULT_STRATEGY, junk)
+        assert source == "heuristic", f"{junk} should not count as evidence"
+        assert abs(value - heuristic) < 1e-9
+
+
+@test("A delta reports whether its hold time was measured or guessed")
+def _():
+    points = series([1000] * 6)
+    live = {"lowest_price": 800, "p50_price": 1000, "total_count": 2}
+
+    guessed = compute_delta("test", points, live, live_ask=800)
+    assert guessed["hold_source"] == "heuristic"
+    assert guessed["hold_samples"] == 0
+
+    measured = compute_delta("test", points, live, live_ask=800,
+                             hold_observation={"days": 0.4, "samples": 20})
+    assert measured["hold_source"] == "measured"
+    assert measured["hold_samples"] == 20
+    assert measured["hold_days"] < guessed["hold_days"], \
+        "a measured fast seller should beat the pessimistic default"
+    # Edge per day is hold time in the denominator, so the plan sees it too.
+    assert measured["edge_per_day"] > guessed["edge_per_day"]
 
 
 @test("The model's influence on fair value is bounded")

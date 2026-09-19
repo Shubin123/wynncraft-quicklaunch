@@ -26,6 +26,10 @@ PORT = int(os.environ.get("WYNN_TEST_PORT", "8791"))
 BOT_STUB_PORT = int(os.environ.get("WYNN_TEST_BOT_STUB_PORT", "8792"))
 BASE = f"http://localhost:{PORT}"
 
+# The server runs as a subprocess, but a couple of tests build fixtures with
+# the same helpers it uses, so the module directory is needed here too.
+sys.path.insert(0, str(REPO / "scripts"))
+
 PASSED = 0
 FAILED = 0
 
@@ -415,6 +419,53 @@ with tempfile.TemporaryDirectory() as tmp:
             get("/api/state")
             after = len([l for l in scan_file.read_text().splitlines() if '"market_scan"' in l])
             assert after == before, f"unchanged window logged again: {before} -> {after}"
+
+        @test("Recorded scans feed measured hold times into the deltas")
+        def _():
+            # Full Phase 1 path: seed a scan log the way the recorder writes it,
+            # then check /api/deltas prices with the measurement rather than the
+            # pool-size guess.
+            import wynn_market_log as market_log
+
+            scan_file = home / ".local" / "share" / "wynn-dashboard" / "market_scans.jsonl"
+            day = 86400.0
+            now = time.time()
+            rows = []
+
+            def scan(scan_id, ts, listings):
+                rows.append({"type": "market_scan", "scan_id": scan_id, "ts": ts,
+                             "session_id": None, "world": "NA3", "query": "spring",
+                             "page": 1, "listing_count": len(listings),
+                             "distinct_sellers": len(listings), "container_slots": 54})
+                for price in listings:
+                    variant = market_log.item_variant("Spring")
+                    rows.append({"type": "listing_observation", "scan_id": scan_id, "ts": ts,
+                                 "item_key": "spring", "item_variant": variant,
+                                 "price": price, "amount": 1, "tier": None, "shiny": False,
+                                 "listing_fingerprint": market_log.listing_fingerprint(variant, price, 1)})
+
+            # Six listings each appear once and are gone by the next scan:
+            # a fast-moving item, measured rather than assumed.
+            for index in range(7):
+                scan(f"s{index}", now - (7 - index) * 0.25 * day, [9000 + index])
+            with scan_file.open("a") as handle:
+                for row in rows:
+                    handle.write(json.dumps(row) + "\n")
+
+            status, body = get("/api/deltas?items=spring")
+            assert status == 200, body
+            spring = body["deltas"][0]
+            assert spring["hold_source"] == "measured", spring
+            assert spring["hold_samples"] >= 5, spring
+            assert spring["hold_days"] <= 0.5, f"six quarter-day lifetimes should read fast: {spring}"
+
+            # An item with no scan history keeps the honest guess.
+            status, body = get("/api/deltas?items=comet")
+            comet = body["deltas"][0]
+            assert comet["hold_source"] == "heuristic", comet
+            assert comet["hold_samples"] == 0
+            assert comet["hold_days"] > spring["hold_days"], \
+                "the unmeasured item should not inherit the measured one's speed"
 
         @test("The dashboard pages are still served")
         def _():

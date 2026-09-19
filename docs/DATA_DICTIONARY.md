@@ -253,9 +253,13 @@ survives a crash mid-write, no database to run. One reader per file
 
 ## 6. What this unlocks downstream
 
-- **A measured hold time.** `estimate_hold_days()` stops guessing from pool size
-  and reads `listing_lifecycle` instead — the single biggest weakness in the
-  current delta model.
+- **A measured hold time.** *(done)* `estimate_hold_days()` now takes the
+  median observed lifetime when there is one, blended against the old pool-size
+  proxy in proportion to how many lifetimes back it — full weight at
+  `HOLD_CONFIDENCE_SAMPLES` (5), so evidence earns its influence instead of one
+  lucky observation swinging a plan. Every delta carries `hold_source`
+  (`measured` / `blended` / `heuristic`) and `hold_samples`, and the liquidity
+  page marks a measured hold with `*`.
 - **Scoreable forecasts.** `decision` plus later `price_point`s makes every
   prediction checkable after the fact, which is what Phase 2's calibration
   tracking needs and what the GA's fitness currently approximates in-sample.

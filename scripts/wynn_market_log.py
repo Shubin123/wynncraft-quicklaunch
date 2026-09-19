@@ -308,6 +308,36 @@ def derive_depth(rows: list[dict]) -> list[dict]:
     return depth
 
 
+def hold_statistics_by_item(rows: list[dict]) -> dict[str, dict]:
+    """Measured time on the board per item, with how many lifetimes back it.
+
+    One pass over the log, because a caller pricing twenty items should not
+    re-derive every lifecycle twenty times. The sample count travels with the
+    median so the consumer can decide how much to trust it.
+    """
+    lifetimes: dict[str, list[float]] = {}
+    for lifecycle in derive_lifecycles(rows):
+        seconds = lifecycle.get("lifetime_seconds")
+        if seconds:
+            lifetimes.setdefault(lifecycle["item_key"], []).append(seconds)
+
+    statistics = {}
+    for item_key, seconds in lifetimes.items():
+        seconds.sort()
+        statistics[item_key] = {
+            "days": round(seconds[len(seconds) // 2] / 86400, 4),
+            "samples": len(seconds),
+            "fastest_days": round(seconds[0] / 86400, 4),
+            "slowest_days": round(seconds[-1] / 86400, 4),
+        }
+    return statistics
+
+
+def hold_statistics(rows: list[dict], item_key: str) -> dict | None:
+    """The measured hold time for one item, or None if none has been seen."""
+    return hold_statistics_by_item(rows).get(normalise_item_key(item_key))
+
+
 def observed_hold_days(rows: list[dict], item_key: str) -> float | None:
     """Measured time on the board for an item, in days.
 
@@ -315,15 +345,8 @@ def observed_hold_days(rows: list[dict], item_key: str) -> float | None:
     listing of this item has been seen to disappear yet - the caller should
     keep its estimate rather than treat silence as speed.
     """
-    lifetimes = [
-        l["lifetime_seconds"] for l in derive_lifecycles(rows)
-        if l["item_key"] == normalise_item_key(item_key) and l["lifetime_seconds"]
-    ]
-    if not lifetimes:
-        return None
-    lifetimes.sort()
-    median = lifetimes[len(lifetimes) // 2]
-    return round(median / 86400, 4)
+    statistics = hold_statistics(rows, item_key)
+    return statistics["days"] if statistics else None
 
 
 def prune(days: float | None = None) -> int:

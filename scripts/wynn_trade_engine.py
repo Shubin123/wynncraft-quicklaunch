@@ -43,6 +43,11 @@ STRATEGY_FILE = DATA_DIR / "strategy.json"
 
 MARKET_FEE = 0.05  # keep in sync with wynn_price_server.MARKET_FEE
 
+# How many observed listing lifetimes it takes before the measurement fully
+# replaces the heuristic. Below this the two are blended, so a single lucky
+# (or unlucky) observation cannot swing a plan on its own.
+HOLD_CONFIDENCE_SAMPLES = 5
+
 # Feature order is part of the model file format: never reorder, only append.
 FEATURE_NAMES = [
     "log_price",
@@ -382,12 +387,18 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-def estimate_hold_days(features: dict, live: dict | None, strategy: dict) -> float:
+def estimate_hold_days(features: dict, live: dict | None, strategy: dict,
+                       hold_observation: dict | None = None) -> tuple[float, str, int]:
     """How long we expect capital to stay parked in this item.
 
-    Liquidity is inferred from how big the listing pool is and how often we
-    manage to sample the item at all; both are proxies, and they are treated as
-    such - the result is clamped rather than trusted precisely.
+    Returns (days, source, samples). When listings of this item have actually
+    been watched onto and off the board (``hold_observation`` from
+    wynn_market_log), that measurement is used; otherwise the old proxies -
+    listing pool size and how often we manage to sample the item - stand in.
+
+    Between one observation and HOLD_CONFIDENCE_SAMPLES the two are blended in
+    proportion to how many lifetimes back the measurement, so evidence earns
+    its influence rather than taking over on the first data point.
     """
     pool = 0.0
     if live and live.get("total_count"):
@@ -400,13 +411,24 @@ def estimate_hold_days(features: dict, live: dict | None, strategy: dict) -> flo
     # A thick pool means the item trades often; a thin one can sit for days.
     from_pool = 14.0 / (1.0 + pool / 5.0)
     from_density = 7.0 / (1.0 + density)
-    hold = (from_pool + from_density) / 2
-    return _clamp(hold, 0.25, float(strategy.get("hold_days_cap", DEFAULT_STRATEGY["hold_days_cap"])))
+    heuristic = (from_pool + from_density) / 2
+    cap = float(strategy.get("hold_days_cap", DEFAULT_STRATEGY["hold_days_cap"]))
+
+    samples = int((hold_observation or {}).get("samples") or 0)
+    measured = (hold_observation or {}).get("days")
+    if not measured or samples <= 0:
+        return _clamp(heuristic, 0.25, cap), "heuristic", 0
+
+    weight = min(1.0, samples / HOLD_CONFIDENCE_SAMPLES)
+    blended = (1 - weight) * heuristic + weight * float(measured)
+    source = "measured" if weight >= 1.0 else "blended"
+    return _clamp(blended, 0.25, cap), source, samples
 
 
 def compute_delta(item: str, points: list[dict], live: dict | None,
                   live_ask: float | None = None, model: MLP | None = None,
-                  strategy: dict | None = None) -> dict | None:
+                  strategy: dict | None = None,
+                  hold_observation: dict | None = None) -> dict | None:
     """One item's edge: fair value versus what it can actually be bought for.
 
     ``live_ask`` is the in-game asking price scraped by the bot; without it we
@@ -455,7 +477,7 @@ def compute_delta(item: str, points: list[dict], live: dict | None,
     proceeds = fair_value * (1 - MARKET_FEE)
     delta = proceeds - ask
     roi = delta / ask
-    hold_days = estimate_hold_days(features, live, strategy)
+    hold_days, hold_source, hold_samples = estimate_hold_days(features, live, strategy, hold_observation)
     edge_per_day = roi / hold_days
 
     risk = features["volatility"] + (0.25 if features["_n_points"] < 3 else 0.0)
@@ -475,6 +497,10 @@ def compute_delta(item: str, points: list[dict], live: dict | None,
         "delta": round(delta, 2),
         "roi": round(roi, 4),
         "hold_days": round(hold_days, 2),
+        # Whether that number was measured from listings actually seen to
+        # leave the board, or is still the old proxy.
+        "hold_source": hold_source,
+        "hold_samples": hold_samples,
         "edge_per_day": round(edge_per_day, 4),
         "risk": round(risk, 4),
         "score": round(score, 6),
@@ -593,7 +619,9 @@ def backtest_strategy(series_by_item: dict[str, list[dict]], strategy: dict,
                 continue
             rows = [{"ts": ts, metric: value} for ts, value in past]
             live = {"lowest_price": past[-1][1], "p50_price": _mean([v for _, v in past[-5:]])}
-            delta = compute_delta(item, rows, live, None, model, strategy)
+            # No scan log inside a backtest: hold times fall back to the
+            # heuristic, the same for every strategy being compared.
+            delta = compute_delta(item, rows, live, None, model, strategy, None)
             if delta:
                 deltas.append(delta)
         if not deltas:

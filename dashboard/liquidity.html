@@ -53,6 +53,7 @@
   th { color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .pos { color: var(--pos); } .neg { color: var(--neg); }
+  .measured { color: var(--accent); font-weight: 700; }
   .status { font-size: 0.85rem; color: var(--muted); }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; border: 1px solid var(--border); }
   .warn { display: inline-block; background: var(--warn-bg); color: var(--warn-text); padding: 2px 8px; border-radius: 4px; font-size: 0.78rem; }
@@ -118,7 +119,7 @@
       <thead>
         <tr>
           <th>Item</th><th>Source</th><th class="num">Ask</th><th class="num">Fair value</th>
-          <th class="num">Delta</th><th class="num">ROI</th><th class="num">Hold</th>
+          <th class="num">Delta</th><th class="num">ROI</th><th class="num" title="* measured from observed listing lifetimes">Hold</th>
           <th class="num">Units</th><th class="num">Spend</th><th class="num">Expected profit</th><th>Act on it</th>
         </tr>
       </thead>
@@ -268,7 +269,10 @@
         <td class="num">${formatEmeralds(leg.fair_value)}</td>
         <td class="num">${signed(leg.delta, formatEmeralds(leg.delta))}</td>
         <td class="num">${signed(leg.roi, percent(leg.roi))}</td>
-        <td class="num">${leg.hold_days}d</td>
+        <td class="num" title="${leg.hold_source === 'heuristic'
+          ? 'estimated from listing pool size'
+          : `measured from ${leg.hold_samples} observed listing lifetimes`}">${leg.hold_days}d${
+          leg.hold_source === 'heuristic' ? '' : '<span class="measured">*</span>'}</td>
         <td class="num">${leg.units}</td>
         <td class="num">${formatEmeralds(leg.spend)}</td>
         <td class="num">${signed(leg.expected_profit, formatEmeralds(leg.expected_profit))}</td>

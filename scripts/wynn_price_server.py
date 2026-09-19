@@ -591,6 +591,12 @@ def build_deltas(items: list[str], use_live: bool = True, days: float = 30,
                  model=None, strategy: dict | None = None) -> tuple[list[dict], list[dict]]:
     """Computes one delta per item, joining all three data sources."""
     live_listings = fetch_live_listings() if use_live else {}
+    # One pass over the scan log for every item being priced, rather than
+    # re-deriving every lifecycle per item.
+    try:
+        hold_stats = market_log.hold_statistics_by_item(market_log.read_rows(days))
+    except Exception:
+        hold_stats = {}
     deltas = []
     skipped = []
     for item in items:
@@ -604,7 +610,8 @@ def build_deltas(items: list[str], use_live: bool = True, days: float = 30,
             skipped.append({"item": item, "reason": (price_body or {}).get("error", f"status {status}")})
             continue
 
-        delta = engine.compute_delta(item, points, aggregate, live_ask, model, strategy)
+        delta = engine.compute_delta(item, points, aggregate, live_ask, model, strategy,
+                                     hold_stats.get(market_log.normalise_item_key(item)))
         if delta is None:
             skipped.append({"item": item, "reason": "not enough price data to value this item"})
             continue
