@@ -58,22 +58,32 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 node "$SCRIPT_DIR/test_inventory_pane.js"
 node "$SCRIPT_DIR/test_inventory_render.js"
 
-# 9. Phase 1 market recorder: schema, dedupe, derived liquidity
+# 9. Bridge contract: both sides held to tests/contracts/market_listing.v1.json
+node "$SCRIPT_DIR/test_bridge_contract.js"
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_bridge_contract.py"
+
+# 10. Round trip: read -> decide -> trade -> confirm, against a stand-in game
+node "$SCRIPT_DIR/test_round_trip.js"
+
+# 11. Translation properties and boundary fuzzing
+node "$SCRIPT_DIR/test_translation_properties.js"
+
+# 12. Phase 1 market recorder: schema, dedupe, derived liquidity
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
 
-# 10. Trade engine: features, neural net, GA, delta pipeline
+# 13. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 11. Trade engine HTTP endpoints (starts a throwaway price server)
+# 14. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 12. Module Tests
+# 15. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 13. Integration Tests
+# 16. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 14. E2E Tests
+# 17. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

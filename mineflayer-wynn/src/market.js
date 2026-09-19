@@ -240,7 +240,12 @@ function attachMarket(bot, options = {}) {
     lastError: null,
     defaultLocation: options.location || 'detlas',
     npcSearchRadius: options.npcSearchRadius || 6,
-    walking: false
+    walking: false,
+    // Completed purchases by intent id. A retry - a resent request, a double
+    // click, a client that did not see the response - must not buy twice.
+    // In memory for the life of the session: a restart loses it, which is
+    // noted as a known limit until the trade journal persists intents.
+    completedIntents: new Map()
   };
 
   /**
@@ -450,6 +455,21 @@ function attachMarket(bot, options = {}) {
    * Buys one listing. Requires confirm: true, and optionally a price ceiling.
    */
   market.buy = async function (selector, opts = {}) {
+    // Before anything looks at the board. A retry arrives *after* the first
+    // purchase removed the listing, so a pane lookup would fail on "that slot
+    // is empty" and hide the fact that the trade already happened.
+    if (opts.intentId && market.completedIntents.has(opts.intentId)) {
+      const previous = market.completedIntents.get(opts.intentId);
+      return {
+        ok: true,
+        duplicate: true,
+        intentId: opts.intentId,
+        bought: previous.pane,
+        boughtAt: previous.ts,
+        error: null
+      };
+    }
+
     const pane = market.findPane(selector);
     if (!pane) return { ok: false, error: `No market pane matched ${JSON.stringify(selector)}` };
     if (pane.kind !== 'listing') {
@@ -492,9 +512,20 @@ function attachMarket(bot, options = {}) {
       await market.click({ slot: confirmPane.slot }, { ...opts, confirm: true });
     }
 
+    if (opts.intentId) {
+      market.completedIntents.set(opts.intentId, { pane, ts: Date.now() });
+    }
+
     const scan = market.scan();
-    bot.emit('market:buy', { pane, scan });
-    return { ok: true, bought: pane, confirmed: !!confirmPane, market: scan };
+    bot.emit('market:buy', { pane, scan, intentId: opts.intentId || null });
+    return {
+      ok: true,
+      bought: pane,
+      confirmed: !!confirmPane,
+      intentId: opts.intentId || null,
+      duplicate: false,
+      market: scan
+    };
   };
 
   /**

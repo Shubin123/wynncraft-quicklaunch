@@ -1,0 +1,83 @@
+{
+  "contract": "market_listing",
+  "version": 1,
+  "description": "The shape of a Trade Market listing as it crosses from the game side (mineflayer-wynn/src/market.js, served by /api/bot/market) to the external side (scripts/wynn_price_server.py fetch_live_listings, scripts/wynn_market_log.py record_scan). Both sides are tested against this file. If a field is renamed on one side only, the boundary fails loudly here instead of silently producing zero listings and quietly falling back to stale prices.",
+  "producer": "mineflayer-wynn/src/market.js parseMarketWindow()",
+  "consumers": [
+    "scripts/wynn_price_server.py fetch_live_listings()",
+    "scripts/wynn_market_log.py record_scan()"
+  ],
+  "required_listing_fields": {
+    "slot": "number",
+    "customName": "string",
+    "name": "string",
+    "price": "number",
+    "amount": "number",
+    "kind": "string"
+  },
+  "optional_listing_fields": {
+    "seller": "string|null",
+    "tier": "string|null",
+    "shiny": "boolean",
+    "priceText": "string",
+    "unitPrice": "number|null",
+    "lore": "array"
+  },
+  "required_window_fields": {
+    "open": "boolean",
+    "isMarket": "boolean",
+    "title": "string",
+    "listings": "array",
+    "controls": "array",
+    "slots": "array",
+    "containerSlots": "number"
+  },
+  "invariants": [
+    "price is a whole number of plain emeralds, never a formatted string",
+    "kind is 'listing' for every entry in listings",
+    "customName is what the player sees and is the join key once lowercased",
+    "slot is a position in a repainting window and is never an identity"
+  ],
+  "sample_window": {
+    "open": true,
+    "isMarket": true,
+    "title": "Trade Market",
+    "page": 1,
+    "containerSlots": 54,
+    "totalSlots": 90,
+    "controls": [
+      { "slot": 47, "kind": "control", "role": "search", "customName": "Search Items", "name": "compass", "lore": [] },
+      { "slot": 53, "kind": "control", "role": "next_page", "customName": "Next Page", "name": "arrow", "lore": [] }
+    ],
+    "listings": [
+      {
+        "slot": 10,
+        "kind": "listing",
+        "name": "bow",
+        "customName": "Spring",
+        "price": 12288,
+        "priceText": "3le",
+        "unitPrice": null,
+        "amount": 1,
+        "seller": "SomePlayer",
+        "tier": "Legendary",
+        "shiny": false,
+        "lore": ["Legendary Item", "Price: 3 le", "Amount: 1", "Seller: SomePlayer"]
+      },
+      {
+        "slot": 11,
+        "kind": "listing",
+        "name": "diamond_chestplate",
+        "customName": "Boreal-Patterned Aegis",
+        "price": 262144,
+        "priceText": "1stx",
+        "unitPrice": null,
+        "amount": 1,
+        "seller": "AnotherPlayer",
+        "tier": "Mythic",
+        "shiny": true,
+        "lore": ["Mythic Item", "Price: 1 stx", "Amount: 1", "Seller: AnotherPlayer"]
+      }
+    ]
+  }
+}

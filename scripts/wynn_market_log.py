@@ -101,7 +101,13 @@ def record_scan(market: dict, session_id=None, world=None, now: float | None = N
     if not market or not market.get("open") or not market.get("isMarket"):
         return None
 
-    listings = [l for l in (market.get("listings") or []) if l.get("price")]
+    # A listing needs both a price and a name to be worth anything: an
+    # unnamed row would land in the log as a phantom item with an empty key
+    # and poison the lifetime and depth measurements for it.
+    listings = [
+        l for l in (market.get("listings") or [])
+        if l.get("price") and normalise_item_key(l.get("customName") or l.get("name"))
+    ]
     if not listings:
         return None
 
