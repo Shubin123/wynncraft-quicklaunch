@@ -228,7 +228,7 @@ must be scored differently from one built on a live one.
 | Stream | Location | Format | Retention |
 |---|---|---|---|
 | `price_point` | `~/.local/share/wynn-dashboard/history.jsonl` | JSONL | Indefinite; small |
-| `market_scan`, `listing_observation` | `.../market_scans.jsonl` | JSONL | 90 days rolling |
+| `market_scan`, `listing_observation` | `.../market_scans.jsonl` | JSONL, `type` field discriminates | 90 days rolling |
 | Derived (`listing_lifecycle`, `market_depth`) | `.../derived/*.jsonl` | JSONL | Rebuildable from the above |
 | `own_*`, `trade_*`, `decision` | `.../journal.jsonl` | JSONL | Indefinite; it is your own trading record |
 
@@ -243,8 +243,8 @@ survives a crash mid-write, no database to run. One reader per file
 | Event | Producer | Status |
 |---|---|---|
 | `price_point` | `record_snapshot()`, `scripts/wynn_price_server.py` | existing, needs `item_key` normalisation |
-| `market_scan`, `listing_observation` | `parseMarketWindow()`, `mineflayer-wynn/src/market.js` | parsed already, not persisted |
-| `market_depth`, `listing_lifecycle` | new derivation step | new |
+| `market_scan`, `listing_observation` | `record_scan()`, `scripts/wynn_market_log.py`, fed by `/api/state` | **implemented** |
+| `market_depth`, `listing_lifecycle` | `derive_depth()` / `derive_lifecycles()`, same module | **implemented** |
 | `own_inventory_snapshot` | `wynn.countEmeralds()`, `getInventory()` | available, not persisted |
 | `trade_intent`/`trade_outcome` | `market.buy()` + `/api/bot/market/buy` | guards exist (`confirm`, `maxPrice`, `expectItem`); journal is new |
 | `decision` | `/api/plan`, `wynn_trade_engine.plan_liquidity()` | computed already, not persisted |
@@ -267,8 +267,11 @@ survives a crash mid-write, no database to run. One reader per file
 
 ## 7. Open questions
 
-1. Scan cadence: how often may the bot re-open the market before it is rude to
-   the server? Lifetime resolution is bounded by this interval.
+1. Scan cadence: currently 60s between repeats of an *unchanged* window
+   (`WYNN_SCAN_INTERVAL`); a changed window is always recorded. Lifetime
+   resolution is bounded by how often the market is actually read, which today
+   is whenever a dashboard tab polls `/api/state` with a market window open.
+   Worth revisiting once the bot scans on a schedule of its own.
 2. Variant granularity: are rolled gear stats worth a separate `item_variant`,
    or is name+tier+shiny enough? Affects how comparable two asks really are.
 3. Retention of `listing_observation` at 90 days — long enough for seasonality,

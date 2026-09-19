@@ -385,6 +385,37 @@ with tempfile.TemporaryDirectory() as tmp:
             finally:
                 pass
 
+        @test("Reading the state records the market scan Phase 1 needs")
+        def _():
+            # /api/state reads the bot's market window; that read is also the
+            # observation the liquidity measurements are built from.
+            get("/api/state")
+            scan_file = home / ".local" / "share" / "wynn-dashboard" / "market_scans.jsonl"
+            assert scan_file.exists(), "a scan should have been recorded from the stub market"
+
+            rows = [json.loads(line) for line in scan_file.read_text().splitlines() if line.strip()]
+            scans = [r for r in rows if r["type"] == "market_scan"]
+            observations = [r for r in rows if r["type"] == "listing_observation"]
+            assert len(scans) >= 1, rows
+            assert scans[0]["listing_count"] == 3, scans[0]
+            assert {o["item_key"] for o in observations} == {"spring", "wybel paw"}, observations
+
+            # The cheapest Spring listing is present with its integer price.
+            spring = sorted(o["price"] for o in observations if o["item_key"] == "spring")
+            assert spring == [9000, 12000], spring
+
+            # And nothing in the log is keyed to a player.
+            assert "seller" not in observations[0], observations[0]
+
+        @test("Polling the state again does not re-log an unchanged market")
+        def _():
+            scan_file = home / ".local" / "share" / "wynn-dashboard" / "market_scans.jsonl"
+            before = len([l for l in scan_file.read_text().splitlines() if '"market_scan"' in l])
+            get("/api/state")
+            get("/api/state")
+            after = len([l for l in scan_file.read_text().splitlines() if '"market_scan"' in l])
+            assert after == before, f"unchanged window logged again: {before} -> {after}"
+
         @test("The dashboard pages are still served")
         def _():
             for page in ("/index.html", "/market.html", "/liquidity.html", "/bot.html"):

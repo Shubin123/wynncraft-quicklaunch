@@ -58,19 +58,22 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 node "$SCRIPT_DIR/test_inventory_pane.js"
 node "$SCRIPT_DIR/test_inventory_render.js"
 
-# 9. Trade engine: features, neural net, GA, delta pipeline
+# 9. Phase 1 market recorder: schema, dedupe, derived liquidity
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
+
+# 10. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 10. Trade engine HTTP endpoints (starts a throwaway price server)
+# 11. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 11. Module Tests
+# 12. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 12. Integration Tests
+# 13. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 13. E2E Tests
+# 14. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

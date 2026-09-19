@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import wynn_market_log as market_log
 import wynn_trade_engine as engine
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
@@ -522,6 +523,14 @@ def build_state() -> dict:
     market_state = None
     if market:
         listings = market.get("listings") or []
+        # Record the window as Phase 1's market_scan / listing_observation.
+        # Deduped and interval-limited inside the recorder, so polling /api/state
+        # from several tabs does not fill the log. Never allowed to break the
+        # snapshot: observation is a side benefit of the read, not its purpose.
+        try:
+            market_log.record_scan(market, world=(status or {}).get("server"))
+        except Exception:
+            pass
         # The cheapest live ask per item: the join key between what the bot can
         # see in game and what the price pages and the engine know about.
         cheapest: dict[str, dict] = {}
