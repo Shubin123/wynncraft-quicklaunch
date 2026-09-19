@@ -19,6 +19,7 @@
   const STORAGE_PREFIX = 'wynn:layout:';
   const MIN_PANEL_PX = 380;   // narrowest a panel may be before columns drop
   const MAX_SPAN = 4;
+  const MIN_PANEL_HEIGHT = 140;
 
   /**
    * How many columns an auto-fit grid will actually produce.
@@ -75,7 +76,28 @@
     return without;
   }
 
-  const helpers = { columnCount, clampSpan, mergeOrder, reorder, MIN_PANEL_PX, MAX_SPAN, STORAGE_PREFIX };
+  /**
+   * The span a panel should take when its right edge is dragged to `pointerX`.
+   *
+   * Columns are equal and share one gap, so the width the pointer implies is
+   * rounded to whole columns: the panel snaps as the pointer crosses the
+   * midpoint of each column rather than drifting between two of them.
+   */
+  function spanFromPointer(pointerX, panelLeft, containerWidth, columns, gap = 16) {
+    const columnWidth = (containerWidth + gap) / Math.max(1, columns);
+    const width = pointerX - panelLeft;
+    return clampSpan(Math.round((width + gap) / columnWidth), columns);
+  }
+
+  /** A dragged bottom edge, clamped so a panel cannot vanish. */
+  function heightFromPointer(pointerY, panelTop, minHeight = MIN_PANEL_HEIGHT) {
+    return Math.max(minHeight, Math.round(pointerY - panelTop));
+  }
+
+  const helpers = {
+    columnCount, clampSpan, mergeOrder, reorder, spanFromPointer, heightFromPointer,
+    MIN_PANEL_PX, MIN_PANEL_HEIGHT, MAX_SPAN, STORAGE_PREFIX
+  };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = helpers;
@@ -105,6 +127,27 @@
     touch-action: none; /* the handle owns the gesture, so touch can drag too */
   }
   .wynn-drag-handle:active { cursor: grabbing; }
+  /* Edges you can grab: right for width, bottom for height, corner for both. */
+  .wynn-resize {
+    position: absolute; z-index: 30; opacity: 0; transition: opacity 0.15s;
+    touch-action: none;
+  }
+  .wynn-resize::after {
+    content: ''; position: absolute; inset: 0; margin: auto;
+    background: var(--accent, #22c55e); border-radius: 2px;
+  }
+  .wynn-resize-x { top: 8px; bottom: 8px; right: -5px; width: 12px; cursor: ew-resize; }
+  .wynn-resize-x::after { width: 3px; height: 40px; }
+  .wynn-resize-y { left: 8px; right: 8px; bottom: -5px; height: 12px; cursor: ns-resize; }
+  .wynn-resize-y::after { height: 3px; width: 40px; }
+  .wynn-resize-xy { right: -5px; bottom: -5px; width: 16px; height: 16px; cursor: nwse-resize; }
+  .wynn-resize-xy::after { width: 8px; height: 8px; border-radius: 0 0 3px 0; }
+  .panel-wrap:hover > .wynn-resize { opacity: 0.35; }
+  .wynn-resize:hover, .wynn-resize.wynn-resizing { opacity: 1 !important; }
+  body.wynn-resizing-active { user-select: none; }
+  /* A panel given an explicit height keeps its card inside it. */
+  .wynn-grid > .panel-wrap[data-sized="1"] > .node-card { height: 100%; overflow: auto; }
+
   .wynn-panel-tools {
     display: inline-flex; gap: 2px; align-items: center; margin-left: 6px;
   }
@@ -166,6 +209,7 @@
     const state = {
       order: defaultIds.slice(),
       spans: { ...defaultSpans },
+      heights: {},
       minPanel: MIN_PANEL_PX
     };
 
@@ -175,6 +219,7 @@
         if (!saved) return;
         state.order = mergeOrder(defaultIds, saved.order);
         state.spans = { ...defaultSpans, ...(saved.spans || {}) };
+        state.heights = saved.heights || {};
         state.minPanel = Number(saved.minPanel) || MIN_PANEL_PX;
       } catch (err) {
         // A corrupt or unavailable store just means the default layout.
@@ -184,7 +229,7 @@
     function save() {
       try {
         localStorage.setItem(pageKey, JSON.stringify({
-          order: state.order, spans: state.spans, minPanel: state.minPanel
+          order: state.order, spans: state.spans, heights: state.heights, minPanel: state.minPanel
         }));
       } catch (err) {
         // Layout is a convenience; losing it must never break the page.
@@ -202,6 +247,15 @@
         panel.style.order = String(position);
         const span = clampSpan(state.spans[id] || 1, columns);
         panel.style.setProperty('--wynn-span', String(span));
+
+        const height = state.heights[id];
+        if (height) {
+          panel.style.height = `${height}px`;
+          panel.dataset.sized = '1';
+        } else {
+          panel.style.height = '';
+          delete panel.dataset.sized;
+        }
         const tools = panel.querySelector('.wynn-panel-tools');
         if (tools) {
           tools.querySelector('[data-act="narrow"]').disabled = span <= 1;
@@ -244,6 +298,73 @@
       return { panel, before: x < rect.left + rect.width / 2 };
     }
 
+    /**
+     * One draggable edge. `axis` is 'x' (width, in whole columns), 'y'
+     * (height, in pixels) or 'xy' (both at once from the corner).
+     */
+    function addResizeHandle(panel, axis) {
+      const handle = document.createElement('div');
+      handle.className = `wynn-resize wynn-resize-${axis}`;
+      handle.title = axis === 'y' ? 'Drag to resize height'
+        : axis === 'x' ? 'Drag to resize width' : 'Drag to resize';
+      panel.appendChild(handle);
+
+      let active = null;
+
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 && event.pointerType === 'mouse') return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = panel.getBoundingClientRect();
+        active = { id: event.pointerId, left: rect.left, top: rect.top };
+        handle.classList.add('wynn-resizing');
+        document.body.classList.add('wynn-resizing-active');
+        try { handle.setPointerCapture(event.pointerId); } catch (err) { /* older browsers */ }
+      });
+
+      handle.addEventListener('pointermove', (event) => {
+        if (!active) return;
+        const columns = columnCount(container.clientWidth, state.minPanel);
+        if (axis !== 'y') {
+          const span = spanFromPointer(event.clientX, active.left, container.clientWidth, columns);
+          if (span !== state.spans[panel.id]) {
+            state.spans[panel.id] = span;
+            apply();
+          }
+        }
+        if (axis !== 'x') {
+          // Height is applied straight to the element while dragging so it
+          // tracks the pointer; apply() persists it on release.
+          const height = heightFromPointer(event.clientY, active.top);
+          state.heights[panel.id] = height;
+          panel.style.height = `${height}px`;
+          panel.dataset.sized = '1';
+        }
+      });
+
+      function stop() {
+        if (!active) return;
+        try { handle.releasePointerCapture(active.id); } catch (err) { /* already released */ }
+        active = null;
+        handle.classList.remove('wynn-resizing');
+        document.body.classList.remove('wynn-resizing-active');
+        apply();
+        save();
+      }
+
+      handle.addEventListener('pointerup', stop);
+      handle.addEventListener('pointercancel', stop);
+      handle.addEventListener('lostpointercapture', stop);
+
+      // Double-click an edge to give the height back to the content.
+      handle.addEventListener('dblclick', () => {
+        if (axis === 'x') return;
+        delete state.heights[panel.id];
+        apply();
+        save();
+      });
+    }
+
     function wirePanel(panel) {
       const header = panel.querySelector('.node-header') || panel.querySelector('h2') || panel.firstElementChild;
       if (!header) return;
@@ -266,6 +387,13 @@
         setSpan(panel.id, button.dataset.act === 'wide' ? 1 : -1);
       });
       header.appendChild(tools);
+
+      // Grab an edge to resize: right for width (snapped to columns), bottom
+      // for height, corner for both. The +/- buttons stay for keyboard and
+      // touch users, but an edge is what people reach for.
+      addResizeHandle(panel, 'x');
+      addResizeHandle(panel, 'y');
+      addResizeHandle(panel, 'xy');
 
       // Pointer events rather than HTML5 drag-and-drop: they work the same way
       // for mouse, pen and touch, they survive the pointer crossing an iframe,
@@ -352,6 +480,7 @@
     bar.querySelector('#wynn-layout-reset').addEventListener('click', () => {
       state.order = defaultIds.slice();
       state.spans = { ...defaultSpans };
+      state.heights = {};
       state.minPanel = MIN_PANEL_PX;
       density.value = String(state.minPanel);
       try { localStorage.removeItem(pageKey); } catch (err) { /* nothing to clear */ }

@@ -36,6 +36,29 @@ function test(name, fn) {
   }
 }
 
+test('Dragging an edge snaps the width to whole columns', () => {
+  // A 1920 container in 4 columns: each column is 484px including the gap.
+  // Each column is (1920 + 16) / 4 = 484 wide, so the snap to two columns
+  // happens as the pointer crosses 710 - half a column past the first.
+  assert.strictEqual(layout.spanFromPointer(400, 0, 1920, 4), 1, 'inside the first column');
+  assert.strictEqual(layout.spanFromPointer(700, 0, 1920, 4), 1, 'just short of the midpoint');
+  assert.strictEqual(layout.spanFromPointer(760, 0, 1920, 4), 2, 'just past it');
+  assert.strictEqual(layout.spanFromPointer(1450, 0, 1920, 4), 3);
+  assert.strictEqual(layout.spanFromPointer(1900, 0, 1920, 4), 4);
+  assert.strictEqual(layout.spanFromPointer(5000, 0, 1920, 4), 4, 'never wider than the grid');
+  assert.strictEqual(layout.spanFromPointer(-200, 0, 1920, 4), 1, 'nor narrower than one column');
+
+  // A panel that does not start at the left edge measures from its own left.
+  assert.strictEqual(layout.spanFromPointer(1400, 968, 1920, 4), 1);
+});
+
+test('Dragging the bottom edge sets a height, with a floor', () => {
+  assert.strictEqual(layout.heightFromPointer(600, 100), 500);
+  assert.strictEqual(layout.heightFromPointer(150, 100), layout.MIN_PANEL_HEIGHT,
+    'a panel cannot be dragged away to nothing');
+  assert.strictEqual(layout.heightFromPointer(0, 100), layout.MIN_PANEL_HEIGHT);
+});
+
 test('The column count follows the viewport, well past two', () => {
   assert.strictEqual(layout.columnCount(700), 1, 'a narrow window is one column');
   assert.strictEqual(layout.columnCount(1280), 3);
@@ -112,7 +135,9 @@ function makeNode(tag) {
   };
   node.addEventListener = (type, handler) => { (node.events[type] = node.events[type] || []).push(handler); };
   node.dispatch = (type, event = {}) => (node.events[type] || []).forEach(h => h({ preventDefault() {}, ...event }));
-  node.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200 });
+  node.rect = { left: 0, top: 0, width: 400, height: 200 };
+  node.getBoundingClientRect = () => ({ ...node.rect, right: node.rect.left + node.rect.width,
+    bottom: node.rect.top + node.rect.height });
   node.querySelector = (selector) => query(node, selector);
   node.querySelectorAll = (selector) => queryAll(node, selector);
   node.closest = (selector) => {
@@ -332,6 +357,83 @@ test('The arrangement is saved and restored', () => {
   const second = boot({ storage });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(second.sandbox.wynnLayout.state().order)),
     savedOrder, 'and comes back on reload');
+});
+
+test('Every panel has grabbable edges', () => {
+  const { document } = boot();
+  const panel = document.getElementById('pw-ai');
+  for (const axis of ['x', 'y', 'xy']) {
+    assert.ok(panel.querySelector(`.wynn-resize-${axis}`), `the ${axis} edge is missing`);
+  }
+});
+
+test('Dragging the right edge resizes the panel and remembers it', () => {
+  const storage = {};
+  const { sandbox, document, container } = boot({ storage, containerWidth: 1920 });
+  const panel = document.getElementById('pw-telemetry');
+  panel.rect = { left: 0, top: 0, width: 452, height: 400 };
+  const handle = panel.querySelector('.wynn-resize-x');
+
+  assert.strictEqual(panel.style['--wynn-span'], '1');
+  handle.dispatch('pointerdown', { clientX: 452, clientY: 200, button: 0, pointerType: 'mouse', pointerId: 2,
+    stopPropagation() {} });
+  handle.dispatch('pointermove', { clientX: 1450, clientY: 200, pointerId: 2 });
+  assert.strictEqual(panel.style['--wynn-span'], '3', 'the width follows the pointer as it drags');
+  handle.dispatch('pointerup', { pointerId: 2 });
+
+  assert.strictEqual(sandbox.wynnLayout.state().spans['pw-telemetry'], 3);
+  assert.ok(JSON.parse(storage['wynn:layout:bot.html']).spans['pw-telemetry'] === 3,
+    'and is written down on release');
+});
+
+test('Dragging the bottom edge resizes the height and remembers it', () => {
+  const storage = {};
+  const { sandbox, document } = boot({ storage });
+  const panel = document.getElementById('pw-ai');
+  panel.rect = { left: 0, top: 100, width: 452, height: 300 };
+  const handle = panel.querySelector('.wynn-resize-y');
+
+  handle.dispatch('pointerdown', { clientX: 200, clientY: 400, button: 0, pointerType: 'mouse', pointerId: 3,
+    stopPropagation() {} });
+  handle.dispatch('pointermove', { clientX: 200, clientY: 700, pointerId: 3 });
+  assert.strictEqual(panel.style.height, '600px', 'the height tracks the pointer');
+  assert.strictEqual(panel.dataset.sized, '1', 'and the card is told to fill it');
+  handle.dispatch('pointerup', { pointerId: 3 });
+
+  assert.strictEqual(sandbox.wynnLayout.state().heights['pw-ai'], 600);
+  assert.strictEqual(JSON.parse(storage['wynn:layout:bot.html']).heights['pw-ai'], 600);
+});
+
+test('A height can be given back to the content, and reset clears it', () => {
+  const { sandbox, document } = boot();
+  const panel = document.getElementById('pw-ai');
+  panel.rect = { left: 0, top: 100, width: 452, height: 300 };
+  const handle = panel.querySelector('.wynn-resize-y');
+  handle.dispatch('pointerdown', { clientX: 200, clientY: 400, button: 0, pointerType: 'mouse', pointerId: 4,
+    stopPropagation() {} });
+  handle.dispatch('pointermove', { clientX: 200, clientY: 800, pointerId: 4 });
+  handle.dispatch('pointerup', { pointerId: 4 });
+  assert.ok(sandbox.wynnLayout.state().heights['pw-ai']);
+
+  handle.dispatch('dblclick', {});
+  assert.strictEqual(sandbox.wynnLayout.state().heights['pw-ai'], undefined, 'double click frees the height');
+  assert.strictEqual(panel.style.height, '');
+  assert.strictEqual(panel.dataset.sized, undefined);
+});
+
+test('Resizing an edge does not also drag the panel away', () => {
+  const { sandbox, document } = boot();
+  const before = JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order));
+  const panel = document.getElementById('pw-ai');
+  const handle = panel.querySelector('.wynn-resize-x');
+  let stopped = false;
+  handle.dispatch('pointerdown', { clientX: 400, clientY: 200, button: 0, pointerType: 'mouse', pointerId: 5,
+    stopPropagation() { stopped = true; } });
+  handle.dispatch('pointermove', { clientX: 900, clientY: 260, pointerId: 5 });
+  handle.dispatch('pointerup', { pointerId: 5 });
+
+  assert.ok(stopped, 'the resize must not bubble up as the start of a move');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(sandbox.wynnLayout.state().order)), before);
 });
 
 test('Panels can be widened and narrowed, within the columns available', () => {
