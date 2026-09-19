@@ -21,7 +21,7 @@ Each module isolated, its collaborators replaced.
 | Extractor | `mineflayer-wynn/src/market.js` (`parseMarketWindow`, `classifySlot`) | `test_market.js` | the whole bot: a plain object with `currentWindow` |
 | Translator | `parseEmeralds` / `formatEmeralds`, `src/blockstates.js` | `test_market.js`, `test_viewer.js`, `test_translation_properties.js` | nothing — pure functions |
 | Decision | `scripts/wynn_trade_engine.py` | `test_trade_engine.py` | no I/O at all: series and quotes passed in |
-| Executor | `market.buy` / `market.click` | `test_market.js` | `bot.clickWindow` records instead of clicking |
+| Executor | `market.buy` / `market.click` | `test_market.js`, `test_trade_journal.js` | `bot.clickWindow` records instead of clicking; journal path redirected |
 | Recorder | `scripts/wynn_market_log.py` | `test_market_log.py` | clock injected (`now=`), log path via `WYNN_SCAN_FILE` |
 
 **What keeps them decoupled.** The engine takes data, never fetches it —
@@ -88,10 +88,11 @@ gone, so any check that inspects the board first fails with "that slot is
 empty" and hides the fact that the trade already happened. The round-trip test
 caught exactly that.
 
-**Known limit:** completed intents live in memory for the session. A bot
-restart between the first attempt and the retry would allow a double buy. The
-fix is the `trade_intent` / `trade_outcome` journal in the data dictionary;
-until it lands, this is a gap and not a guarantee.
+Intents are persisted. `mineflayer-wynn/src/journal.js` writes a
+`trade_intent` before the click and a `trade_outcome` after, so idempotency
+survives a restart (`test_trade_journal.js`), and a trade interrupted between
+the two stays visible as unresolved rather than being assumed either way -
+`GET /api/bot/trades/pending` lists them.
 
 ---
 
@@ -116,7 +117,8 @@ engine, and every pane classified as one of the known kinds.
 | Wynnventory unreachable | covered — deltas fall back to local history |
 | Corrupt state files | covered — lock file, scan log torn mid-write, strategy file |
 | Unwritable config | covered — reported, not thrown |
-| Disconnect mid-trade | **gap** |
+| Disconnect mid-trade | covered — the click throws, the outcome records `failed`, nothing is claimed about the balance |
+| Process death mid-trade | covered — an intent with no outcome stays pending for reconciliation |
 | Server lag / timeout on a click | partly — latency is tested, a hung click is not |
 
 **Load** is a gap. Nothing measures behaviour at high scan or trade frequency,
@@ -131,6 +133,7 @@ server, not throughput.
 tests/
   contracts/market_listing.v1.json   both languages read this
   test_bridge_contract.{js,py}       one seam, two sides
+  test_trade_journal.js              intents on disk: restart, disconnect
   test_round_trip.js                 the cycle, against a stand-in game
   test_translation_properties.js     properties and fuzz
   test_market_log.py                 recorder and derivations
@@ -143,7 +146,10 @@ mineflayer-wynn/tests/               game-side units
 Conventions that keep it maintainable:
 
 - **No test touches real state.** Temporary `HOME`, `PRISM_DIR`,
-  `WYNN_SCAN_FILE`, `WYNN_BOT_ACCOUNT_FILE`; servers on throwaway ports.
+  `WYNN_SCAN_FILE`, `WYNN_BOT_ACCOUNT_FILE`, `WYNN_JOURNAL_FILE`; servers on
+  throwaway ports. Adding the journal broke this for one run - the round-trip
+  tests wrote real trade rows into the live data directory before the override
+  existed - so every new on-disk record needs its redirect from the start.
 - **Time and randomness are injected.** `now=` parameters and seeded RNGs, so
   nothing depends on the wall clock or luck.
 - **Stand-ins mirror the real shape.** When a stub diverges from reality the
@@ -156,10 +162,12 @@ Conventions that keep it maintainable:
 
 ## Gaps, in the order worth closing
 
-1. **Persistent intents** — the journal, so a restart cannot double-buy.
-2. **Disconnect mid-trade** — kill the connection between click and settle, and
-   assert the intent is either completed or cleanly absent, never half-applied.
-3. **An offline server harness** — `flying-squid` / `prismarine-server` on
+1. **An offline server harness** — `flying-squid` / `prismarine-server` on
    localhost would exercise the real protocol and real mineflayer rather than a
    stand-in bot. The stand-in covers logic; it cannot catch a protocol change.
-4. **Load** — only once there is a reason to believe frequency matters.
+2. **Automatic reconciliation** — pending intents are listed but resolving one
+   still means looking in the game. Comparing the emerald balance and the
+   board against the intent could settle most of them.
+3. **Load** — only once there is a reason to believe frequency matters.
+
+*Closed:* persistent intents and disconnect-mid-trade, by the trade journal.

@@ -62,28 +62,31 @@ node "$SCRIPT_DIR/test_inventory_render.js"
 node "$SCRIPT_DIR/test_bridge_contract.js"
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_bridge_contract.py"
 
-# 10. Round trip: read -> decide -> trade -> confirm, against a stand-in game
+# 10. Trade journal: idempotency across a restart, reconciliation
+node "$SCRIPT_DIR/test_trade_journal.js"
+
+# 11. Round trip: read -> decide -> trade -> confirm, against a stand-in game
 node "$SCRIPT_DIR/test_round_trip.js"
 
-# 11. Translation properties and boundary fuzzing
+# 12. Translation properties and boundary fuzzing
 node "$SCRIPT_DIR/test_translation_properties.js"
 
-# 12. Phase 1 market recorder: schema, dedupe, derived liquidity
+# 13. Phase 1 market recorder: schema, dedupe, derived liquidity
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
 
-# 13. Trade engine: features, neural net, GA, delta pipeline
+# 14. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 14. Trade engine HTTP endpoints (starts a throwaway price server)
+# 15. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 15. Module Tests
+# 16. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 16. Integration Tests
+# 17. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 17. E2E Tests
+# 18. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

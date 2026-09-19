@@ -13,6 +13,11 @@
  * bought, and a page can be turned underneath the caller.
  */
 
+// Journals are written by the buy path; keep them out of the real data
+// directory. Set before requiring anything that opens one.
+process.env.WYNN_JOURNAL_FILE = require('path').join(
+  require('os').tmpdir(), `wynn-journal-test-${process.pid}.jsonl`);
+
 const assert = require('assert');
 const EventEmitter = require('events');
 const path = require('path');

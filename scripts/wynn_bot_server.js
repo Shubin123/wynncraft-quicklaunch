@@ -888,6 +888,35 @@ class BotManager extends EventEmitter {
   }
 
   /**
+   * Trades whose result is unknown: an intent was written, the answer never
+   * arrived. Usually a connection dropped mid-purchase. Surfaced so someone
+   * can check the game and resolve it, rather than the bot guessing.
+   */
+  getPendingTrades() {
+    const journal = this.bot?.market?.journal;
+    if (!journal) {
+      return { ok: false, error: 'Bot is not connected', pending: [] };
+    }
+    const pending = journal.pending();
+    return {
+      ok: true,
+      journalFile: journal.file,
+      pending: pending.map(intent => ({
+        intentId: intent.intent_id,
+        ts: intent.ts,
+        side: intent.side,
+        item: intent.item,
+        units: intent.units,
+        limitPrice: intent.limit_price,
+        emeraldsBefore: intent.emeralds_before
+      })),
+      note: pending.length
+        ? 'These were started and never answered. Check the game before retrying: the trade may or may not have happened.'
+        : null
+    };
+  }
+
+  /**
    * Just the bot's position, for pollers like the viewer's tracking camera
    * that would otherwise pull the whole status payload several times a second.
    */
@@ -968,6 +997,8 @@ class BotManager extends EventEmitter {
           result = await market.click(body.selector ?? body, body);
           break;
         case 'buy':
+          // body carries confirm, maxPrice, expectItem and intentId; the
+          // executor decides what to honour.
           result = await market.buy(body.selector ?? body, body);
           break;
         default:
@@ -1246,6 +1277,10 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/entities') {
       return json(200, { entities: manager.getEntities() });
+    }
+
+    if (pathname === '/api/bot/trades/pending') {
+      return json(200, manager.getPendingTrades());
     }
 
     if (pathname === '/api/bot/accounts') {

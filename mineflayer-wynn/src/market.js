@@ -1,5 +1,6 @@
 const { goals } = require('mineflayer-pathfinder');
 const { extractCleanText } = require('./wynncraft');
+const { createJournal } = require('./journal');
 
 /**
  * Trade Market (auction house) automation for Wynncraft.
@@ -234,6 +235,16 @@ function waitForWindow(bot, predicate, timeoutMs) {
  * Attaches the Trade Market controller as bot.market.
  */
 function attachMarket(bot, options = {}) {
+  /** Current emerald total, or null when the bot cannot say. */
+  function countEmeralds() {
+    try {
+      const counted = bot.wynn && bot.wynn.countEmeralds ? bot.wynn.countEmeralds() : null;
+      return counted && typeof counted.total === 'number' ? counted.total : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
   const market = {
     locations: MARKET_LOCATIONS,
     lastScan: null,
@@ -241,11 +252,11 @@ function attachMarket(bot, options = {}) {
     defaultLocation: options.location || 'detlas',
     npcSearchRadius: options.npcSearchRadius || 6,
     walking: false,
-    // Completed purchases by intent id. A retry - a resent request, a double
-    // click, a client that did not see the response - must not buy twice.
-    // In memory for the life of the session: a restart loses it, which is
-    // noted as a known limit until the trade journal persists intents.
-    completedIntents: new Map()
+    // Purchases are written down before and after the click, so a retry is
+    // recognised as a repeat even across a restart, and a trade interrupted
+    // mid-flight stays visible as unresolved rather than being assumed either
+    // way.
+    journal: options.journal || createJournal()
   };
 
   /**
@@ -458,13 +469,13 @@ function attachMarket(bot, options = {}) {
     // Before anything looks at the board. A retry arrives *after* the first
     // purchase removed the listing, so a pane lookup would fail on "that slot
     // is empty" and hide the fact that the trade already happened.
-    if (opts.intentId && market.completedIntents.has(opts.intentId)) {
-      const previous = market.completedIntents.get(opts.intentId);
+    if (opts.intentId && market.journal.isCompleted(opts.intentId)) {
+      const previous = market.journal.outcomeFor(opts.intentId);
       return {
         ok: true,
         duplicate: true,
         intentId: opts.intentId,
-        bought: previous.pane,
+        bought: previous.item ? { customName: previous.item, price: previous.actual_price } : null,
         boughtAt: previous.ts,
         error: null
       };
@@ -503,8 +514,50 @@ function attachMarket(bot, options = {}) {
       };
     }
 
-    const clicked = await market.click({ slot: pane.slot }, { ...opts, confirm: true });
-    if (!clicked.ok) return clicked;
+    const emeraldsBefore = countEmeralds();
+    if (opts.intentId) {
+      // On disk before the click: if the connection drops here, the journal
+      // shows an intent with no outcome, which is the truthful state.
+      market.journal.recordIntent({
+        intent_id: opts.intentId,
+        side: 'buy',
+        item_key: String(pane.customName || pane.name || '').toLowerCase(),
+        item: pane.customName || pane.name,
+        units: pane.amount || 1,
+        limit_price: opts.maxPrice ?? null,
+        expected_fair_value: opts.expectedFairValue ?? null,
+        slot: pane.slot,
+        confirmed_by: opts.confirmedBy || 'human',
+        emeralds_before: emeraldsBefore
+      });
+    }
+
+    let clicked;
+    try {
+      clicked = await market.click({ slot: pane.slot }, { ...opts, confirm: true });
+    } catch (err) {
+      // A click that threw - a disconnect mid-purchase, most likely - is
+      // recorded as failed rather than left as an unanswered intent.
+      if (opts.intentId) {
+        market.journal.recordOutcome({
+          intent_id: opts.intentId, status: 'failed', error: err.message,
+          actual_price: null, emeralds_before: emeraldsBefore, emeralds_after: countEmeralds(),
+          reconciled: null
+        });
+      }
+      return { ok: false, error: `Buy failed: ${err.message}`, pane, intentId: opts.intentId || null };
+    }
+
+    if (!clicked.ok) {
+      if (opts.intentId) {
+        market.journal.recordOutcome({
+          intent_id: opts.intentId, status: 'failed', error: clicked.error,
+          actual_price: null, emeralds_before: emeraldsBefore, emeralds_after: countEmeralds(),
+          reconciled: null
+        });
+      }
+      return clicked;
+    }
 
     // Wynncraft shows a confirmation screen for purchases.
     const confirmPane = market.findPane({ role: 'confirm' });
@@ -513,7 +566,22 @@ function attachMarket(bot, options = {}) {
     }
 
     if (opts.intentId) {
-      market.completedIntents.set(opts.intentId, { pane, ts: Date.now() });
+      const emeraldsAfter = countEmeralds();
+      const spent = (emeraldsBefore !== null && emeraldsAfter !== null)
+        ? emeraldsBefore - emeraldsAfter
+        : null;
+      market.journal.recordOutcome({
+        intent_id: opts.intentId,
+        status: 'executed',
+        item: pane.customName || pane.name,
+        actual_price: pane.price,
+        units: pane.amount || 1,
+        emeralds_before: emeraldsBefore,
+        emeralds_after: emeraldsAfter,
+        // Did the game agree with what we thought we did?
+        reconciled: spent === null ? null : spent === pane.price * (pane.amount || 1),
+        error: null
+      });
     }
 
     const scan = market.scan();
