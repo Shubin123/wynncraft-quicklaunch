@@ -80,7 +80,7 @@ const VIEWER_PORT = parseInt(process.env.WYNN_VIEWER_PORT || '3000', 10);
 const WAYPOINTS = [
   { name: 'Ragni', x: -890, y: 67, z: -1565, desc: 'Starting City (Level 1+)' },
   { name: 'Detlas', x: 470, y: 67, z: -1575, desc: 'Main Trading Hub' },
-  { name: 'Trade Market (Detlas)', x: 528, y: 68, z: -1600, desc: 'Trade Market location in Detlas' },
+  { name: 'Trade Market (Detlas)', x: 500, y: 68, z: -1578, desc: 'Trade Market location in Detlas' },
   { name: 'Almuj', x: 950, y: 80, z: -1950, desc: 'Desert City (Level 50+)' },
   { name: 'Nesaak', x: 120, y: 70, z: -800, desc: 'Snow City (Level 40+)' },
   { name: 'Llevigar', x: -200, y: 40, z: -4400, desc: 'Gavel Portal City (Level 40+)' },

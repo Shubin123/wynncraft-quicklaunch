@@ -21,7 +21,7 @@ const EMERALD_UNITS = {
 
 // Known Trade Market NPC locations. y is the standing height near the NPC.
 const MARKET_LOCATIONS = {
-  detlas: { name: 'Detlas', x: 528, y: 68, z: -1600 },
+  detlas: { name: 'Detlas', x: 500, y: 68, z: -1578 },
   llevigar: { name: 'Llevigar', x: -200, y: 40, z: -4400 },
   cinfras: { name: 'Cinfras', x: -450, y: 45, z: -4900 }
 };

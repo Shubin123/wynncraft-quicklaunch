@@ -40,34 +40,37 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_wire.js"
 # 3. Shared dashboard data layer (selection, links, formatters)
 node "$SCRIPT_DIR/test_wynn_client.js"
 
-# 4. Prism account lock (module behaviour and HTTP surface)
+# 4. Draggable panel layout (grid maths and DOM behaviour)
+node "$SCRIPT_DIR/test_wynn_layout.js"
+
+# 5. Prism account lock (module behaviour and HTTP surface)
 node "$REPO_DIR/mineflayer-wynn/tests/test_account_lock.js"
 node "$SCRIPT_DIR/test_account_api.js"
 
-# 5. Viewer character-tracking overlay (helpers, install, and rendering)
+# 6. Viewer character-tracking overlay (helpers, install, and rendering)
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_overlay.js"
 node "$REPO_DIR/mineflayer-wynn/tests/test_viewer_overlay_render.js"
 
-# 6. Trade Market controller (no running server needed)
+# 7. Trade Market controller (no running server needed)
 node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 
-# 7. Inventory / chest pane (helpers and rendering against a DOM stub)
+# 8. Inventory / chest pane (helpers and rendering against a DOM stub)
 node "$SCRIPT_DIR/test_inventory_pane.js"
 node "$SCRIPT_DIR/test_inventory_render.js"
 
-# 8. Trade engine: features, neural net, GA, delta pipeline
+# 9. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 9. Trade engine HTTP endpoints (starts a throwaway price server)
+# 10. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 10. Module Tests
+# 11. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 11. Integration Tests
+# 12. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 12. E2E Tests
+# 13. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

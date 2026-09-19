@@ -47,7 +47,7 @@ function fakeBot(window) {
   bot.currentWindow = window;
   bot.clicks = [];
   bot.chats = [];
-  bot.entity = { position: new Vec3(528, 68, -1598) };
+  bot.entity = { position: new Vec3(500, 68, -1576) };
   bot.entities = {};
   bot.clickWindow = async (slot, button, mode) => { bot.clicks.push({ slot, button, mode }); };
   bot.chat = (msg) => { bot.chats.push(msg); };
@@ -211,8 +211,8 @@ function fakeBot(window) {
     });
     const bot = fakeBot(null);
     bot.entities = {
-      1: { id: 1, name: 'villager', displayName: 'Trade Market', position: new Vec3(528, 68, -1600) },
-      2: { id: 2, name: 'zombie', displayName: 'Zombie', position: new Vec3(530, 68, -1600) }
+      1: { id: 1, name: 'villager', displayName: 'Trade Market', position: new Vec3(500, 68, -1578) },
+      2: { id: 2, name: 'zombie', displayName: 'Zombie', position: new Vec3(502, 68, -1578) }
     };
     bot.activateEntity = () => {
       bot.currentWindow = window;

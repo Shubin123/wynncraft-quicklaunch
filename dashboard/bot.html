@@ -45,7 +45,9 @@
 
   /* Expansive Modern Grid Shell */
   .wrap {
-    max-width: 1720px;
+    /* No cap: the panel grid fits as many columns as the screen allows, so a
+       wide monitor shows more panels side by side rather than empty margins. */
+    max-width: none;
     margin: 0 auto;
     padding: 16px 20px 40px 20px;
   }
@@ -151,7 +153,6 @@
     .grid-row-4-8, .grid-row-7-5, .grid-row-7-5b {
       grid-template-columns: 1fr;
     }
-    .col-resizer { display: none !important; }
   }
 
   /* Panel wrapper provides relative context for resizer handle */
@@ -162,33 +163,6 @@
     flex-direction: column;
   }
   .panel-wrap .node-card { flex: 1; }
-
-  /* Drag-resize handle between columns */
-  .col-resizer {
-    display: flex;
-    position: absolute;
-    top: 0;
-    right: -9px;
-    width: 18px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 50;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.18s;
-  }
-  .col-resizer::before {
-    content: '';
-    display: block;
-    width: 4px;
-    height: 44px;
-    background: var(--accent);
-    border-radius: 2px;
-    box-shadow: 0 0 8px var(--accent-glow);
-  }
-  .grid-row:hover .col-resizer { opacity: 0.45; }
-  .col-resizer:hover, .col-resizer.dragging { opacity: 1 !important; }
 
   /* Vertical resize handle on resizable log panels */
   .v-resizable {
@@ -520,7 +494,7 @@
     <div class="grid-row grid-row-4-8" id="row1" data-row-var="--gcols-r1">
 
       <!-- Panel A: Telemetry -->
-      <div class="panel-wrap" id="pw-telemetry">
+      <div class="panel-wrap" id="pw-telemetry" data-span="1">
         <div class="node-card accent-card" id="telemetry-card">
           <div class="node-header">
             <div class="node-title">
@@ -651,11 +625,10 @@
           <div id="conn-msg" style="font-size:0.75rem;color:var(--muted);margin-top:8px;text-align:center">Ready to connect.</div>
         </div>
         <!-- Column resize handle (right edge of left panel) -->
-        <div class="col-resizer" data-row="row1" title="Drag to resize columns"></div>
       </div>
 
       <!-- Panel B: 3D Viewport -->
-      <div class="panel-wrap" id="pw-viewer">
+      <div class="panel-wrap" id="pw-viewer" data-span="2">
         <div class="node-card cyan-card" id="viewer-card">
           <div class="node-header">
             <div class="node-title">
@@ -694,7 +667,7 @@
     <div class="grid-row grid-row-7-5" id="row2" data-row-var="--gcols-r2">
 
       <!-- Panel A: Chat -->
-      <div class="panel-wrap" id="pw-chat">
+      <div class="panel-wrap" id="pw-chat" data-span="2">
         <div class="node-card">
           <div class="node-header">
             <div class="node-title">
@@ -737,11 +710,10 @@
           </div>
         </div>
         <!-- Column resize handle -->
-        <div class="col-resizer" data-row="row2" title="Drag to resize columns"></div>
       </div>
 
       <!-- Panel B: AI Insights -->
-      <div class="panel-wrap" id="pw-ai">
+      <div class="panel-wrap" id="pw-ai" data-span="1">
         <div class="node-card purple-card">
           <div class="node-header">
             <div class="node-title">
@@ -801,7 +773,7 @@
     <div class="grid-row grid-row-7-5b" id="row3" data-row-var="--gcols-r3">
 
       <!-- Panel A: Container & Gates -->
-      <div class="panel-wrap" id="pw-container">
+      <div class="panel-wrap" id="pw-container" data-span="2">
         <div class="node-card gold-card" id="window-card">
           <div class="node-header">
             <div class="node-title">
@@ -870,11 +842,10 @@
           </div>
         </div>
         <!-- Column resize handle -->
-        <div class="col-resizer" data-row="row3" title="Drag to resize columns"></div>
       </div>
 
       <!-- Panel B: Navigation -->
-      <div class="panel-wrap" id="pw-nav">
+      <div class="panel-wrap" id="pw-nav" data-span="1">
         <div class="node-card" id="lobby-actions-card">
           <div class="node-header">
             <div class="node-title">
@@ -933,7 +904,7 @@
     <!-- ROW 4: Live Activity Diagnostics Log (full width)          -->
     <!-- ========================================================= -->
     <div class="grid-row grid-row-12" id="row4">
-      <div class="panel-wrap">
+      <div class="panel-wrap" id="pw-diagnostics" data-span="3">
         <div class="node-card" id="diagnostics-card">
           <div class="node-header">
             <div class="node-title">
@@ -2018,95 +1989,20 @@
   }
 
   /* ============================================================
-     COLUMN RESIZER — drag handle between panels in each grid-row
+     PANEL LAYOUT — wynn-layout.js turns the rows into one auto-fit grid
+     whose panels can be dragged, widened and remembered. The old
+     two-column resizers cannot apply to a grid whose column count follows
+     the viewport, so the per-panel width buttons replace them.
   ============================================================ */
-  (function initPanelResizers() {
-    // Map from row id → CSS variable name
-    const ROW_VARS = {
-      row1: '--gcols-r1',
-      row2: '--gcols-r2',
-      row3: '--gcols-r3',
-    };
-
-    function saveLayout() {
-      const data = {};
-      for (const [rowId, cssVar] of Object.entries(ROW_VARS)) {
-        const row = document.getElementById(rowId);
-        if (row) data[rowId] = getComputedStyle(row).getPropertyValue(cssVar).trim() || '';
-      }
-      try { localStorage.setItem('wynn-panel-layout', JSON.stringify(data)); } catch(_) {}
-    }
-
-    function restoreLayout() {
-      try {
-        const raw = localStorage.getItem('wynn-panel-layout');
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        for (const [rowId, val] of Object.entries(data)) {
-          const row = document.getElementById(rowId);
-          const cssVar = ROW_VARS[rowId];
-          if (row && cssVar && val) row.style.setProperty(cssVar, val);
-        }
-      } catch(_) {}
-    }
-
-    function attachResizer(handle) {
-      const rowId = handle.dataset.row;
-      const row = document.getElementById(rowId);
-      if (!row) return;
-      const cssVar = ROW_VARS[rowId];
-      if (!cssVar) return;
-
-      handle.addEventListener('mousedown', function(e) {
-        e.preventDefault();
-        handle.classList.add('dragging');
-
-        // Get the two panel-wraps in this row
-        const panels = Array.from(row.children).filter(el => el.classList.contains('panel-wrap'));
-        if (panels.length < 2) { handle.classList.remove('dragging'); return; }
-
-        const rowRect = row.getBoundingClientRect();
-        const totalWidth = rowRect.width;
-        const gap = parseInt(getComputedStyle(row).gap) || 16;
-
-        function onMouseMove(ev) {
-          const x = ev.clientX - rowRect.left;
-          // Clamp left panel to 15%–85% of total width
-          const leftFr = Math.max(0.15, Math.min(0.85, (x - gap / 2) / (totalWidth - gap)));
-          const rightFr = 1 - leftFr;
-          const val = `${leftFr.toFixed(4)}fr ${rightFr.toFixed(4)}fr`;
-          row.style.setProperty(cssVar, val);
-        }
-
-        function onMouseUp() {
-          handle.classList.remove('dragging');
-          saveLayout();
-          document.removeEventListener('mousemove', onMouseMove);
-          document.removeEventListener('mouseup', onMouseUp);
-        }
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-      });
-    }
-
-    // Attach all handles
-    document.querySelectorAll('.col-resizer').forEach(attachResizer);
-
-    // Restore saved layout on load
-    restoreLayout();
-
-    // Expose reset for debugging
-    window.resetPanelLayout = function() {
-      try { localStorage.removeItem('wynn-panel-layout'); } catch(_) {}
-      for (const [rowId, cssVar] of Object.entries(ROW_VARS)) {
-        const row = document.getElementById(rowId);
-        if (row) row.style.removeProperty(cssVar);
-      }
+  window.resetPanelLayout = function() {
+    if (window.WynnLayout && window.wynnLayout) {
+      window.wynnLayout.reset();
       addLog('Panel layout reset to defaults.', 'UI');
-    };
-  })();
+    }
+  };
+
 </script>
+<script src="wynn-layout.js"></script>
 <script src="inventory-pane.js"></script>
 </body>
 </html>

@@ -568,12 +568,18 @@ function wynncraftPlugin(bot, options = {}) {
   wynn.getOpenWindow = function () {
     const win = bot.currentWindow;
     if (!win) {
+      const inventorySlots = bot.inventory?.slots || [];
+      // Same shape whether or not a container is open: callers should not have
+      // to check which branch produced the object before reading it.
       return {
         open: false,
         id: 0,
         type: 'inventory',
         title: 'Player Inventory',
-        slots: (bot.inventory?.slots || []).map((item, idx) => formatSlot(item, idx, true))
+        totalSlots: inventorySlots.length,
+        availableCharacters: wynn.availableCharacters || [],
+        availableGates: wynn.availableGates || [],
+        slots: inventorySlots.map((item, idx) => formatSlot(item, idx, true))
       };
     }
 
