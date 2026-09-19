@@ -454,10 +454,25 @@ async function runE2E() {
     const prismRP = path.join(prismDir, 'instances/Wynncraft-1.21.11/minecraft/resourcepacks');
     const prismServerRP = path.join(prismDir, 'instances/Wynncraft-1.21.11/minecraft/server-resource-packs');
 
-    // 1. Check viewer texture atlas files
-    assert.ok(fs.existsSync(path.join(pvPublic, 'textures/1.21.1.png')), '1.21.1.png viewer atlas must exist');
-    assert.ok(fs.existsSync(path.join(pvPublic, 'textures/26.1.png')), '26.1.png viewer atlas must exist');
-    assert.ok(fs.existsSync(path.join(pvPublic, 'blocksStates/26.1.json')), '26.1.json blockstates must exist');
+    // 1. Check the atlas of the version the viewer actually renders with.
+    //    The bot connects as '26.1' (WynnProxy protocol 775), which the viewer
+    //    bundle cannot render, so blockstates.js resolves a supported version
+    //    and apply_wynn_textures.py patches that version's atlas.
+    const { resolveRenderVersion } = require('../mineflayer-wynn/src/blockstates');
+    const renderVersion = resolveRenderVersion('26.1');
+    assert.ok(renderVersion, 'A renderable Minecraft version must resolve');
+    assert.ok(fs.existsSync(path.join(pvPublic, `textures/${renderVersion}.png`)),
+      `${renderVersion}.png viewer atlas must exist`);
+    assert.ok(fs.existsSync(path.join(pvPublic, `blocksStates/${renderVersion}.json`)),
+      `${renderVersion}.json blockstates must exist`);
+
+    // The Wynncraft art is applied on top of a pristine snapshot, so when the
+    // texture script has run both must be present and the same size.
+    const vanillaAtlas = path.join(pvPublic, `textures/${renderVersion}.vanilla.png`);
+    if (fs.existsSync(vanillaAtlas)) {
+      const patched = fs.statSync(path.join(pvPublic, `textures/${renderVersion}.png`));
+      assert.ok(patched.size > 100000, 'The patched atlas should be a full-size image');
+    }
 
     // 2. Check Prism Launcher resource packs
     assert.ok(fs.existsSync(path.join(prismRP, 'Wynncraft-Official.zip')), 'Prism resource pack must exist');

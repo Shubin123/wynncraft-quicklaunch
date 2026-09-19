@@ -37,19 +37,23 @@ node "$REPO_DIR/mineflayer-wynn/tests/test_viewer.js"
 # 2. Trade Market controller (no running server needed)
 node "$REPO_DIR/mineflayer-wynn/tests/test_market.js"
 
-# 3. Trade engine: features, neural net, GA, delta pipeline
+# 3. Inventory / chest pane (helpers and rendering against a DOM stub)
+node "$SCRIPT_DIR/test_inventory_pane.js"
+node "$SCRIPT_DIR/test_inventory_render.js"
+
+# 4. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 4. Trade engine HTTP endpoints (starts a throwaway price server)
+# 5. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 5. Module Tests
+# 6. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 6. Integration Tests
+# 7. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 7. E2E Tests
+# 8. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="
