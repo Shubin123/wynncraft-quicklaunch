@@ -377,6 +377,39 @@ Looks up Trade Market pricing via the Wynnventory proxy.
 
 ---
 
+### Shared state (`GET /api/state`, port 8123)
+
+One cheap snapshot every dashboard page reads, so the same information means
+the same thing on all of them:
+
+```json
+{
+  "ok": true, "ts": 1758291234.5,
+  "services": { "botServer": true, "priceApi": true },
+  "bot":     { "connected": true, "position": {...}, "viewer": {...}, "window": {...} },
+  "account": { "using": {...}, "locked": true, "prismActive": {...} },
+  "market":  { "open": true, "listingCount": 12, "cheapest": { "spring": { "price": 9000, "slot": 11 } } },
+  "engine":  { "modelLoaded": true, "strategy": {...}, "marketFee": 0.05 },
+  "prices":  { "watchlist": [...], "historyItems": [...] }
+}
+```
+
+It only reads local files and the local bot server - anything that would call
+Wynnventory stays on its own on-demand endpoint (`/api/price`, `/api/deltas`,
+`/api/plan`). With the bot server stopped, `bot` and `market` come back `null`
+and `services.botServer` is `false`; the rest still answers.
+
+`market.cheapest` is the join key between the three data sources: the lowest
+live in-game ask per item, which `/api/deltas` prefers over Wynnventory's
+lowest listing and over the last recorded price. `WYNN_BOT_SERVER_URL` (or
+`WYNN_BOT_PORT`) points the dashboard at a bot server elsewhere.
+
+Browser side, `dashboard/wynn-client.js` wraps this: `WynnClient.subscribe(fn)`
+for the snapshot, `getSelection()`/`setSelection()` for the item that travels
+between pages (URL first, then localStorage), `linkTo(page, selection)` and
+`crossLinks(item)` for the links, and the shared `formatEmeralds` /
+`parseEmeralds` / `percent` / `escapeHtml` formatters.
+
 ### Account lock (`/api/bot/accounts`, `/api/bot/account/*`)
 
 | Method | Path | Body | Effect |

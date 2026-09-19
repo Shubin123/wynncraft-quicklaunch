@@ -416,7 +416,12 @@ def optimize_slots(estimates: list[dict], capital: float, slots: int) -> dict:
     }
 
 
-BOT_SERVER_URL = "http://127.0.0.1:8124"
+# The bot server's address. Configurable so a non-default WYNN_BOT_PORT works,
+# and so tests can point the dashboard at a stub (or at nothing at all).
+BOT_SERVER_URL = os.environ.get(
+    "WYNN_BOT_SERVER_URL",
+    f"http://127.0.0.1:{os.environ.get('WYNN_BOT_PORT', '8124')}"
+).rstrip("/")
 
 
 def fetch_live_listings(timeout: float = 2.0) -> dict[str, dict]:
@@ -453,6 +458,135 @@ def fetch_live_listings(timeout: float = 2.0) -> dict[str, dict]:
                 "tier": listing.get("tier"),
             }
     return cheapest
+
+
+def fetch_bot(path: str, timeout: float = 2.0):
+    """One call to the bot server, or None when it is not running.
+
+    Everything that reads the bot goes through here so a stopped bot server
+    degrades the dashboard gracefully instead of failing a page.
+    """
+    try:
+        with urllib.request.urlopen(f"{BOT_SERVER_URL}{path}", timeout=timeout) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def build_state() -> dict:
+    """One cheap snapshot of the whole system, for every dashboard page.
+
+    Cheap is the constraint: this is polled every few seconds by whichever
+    tabs are open, so it only reads local files and the local bot server.
+    Anything that would call Wynnventory (prices, deltas, plans) stays on its
+    own on-demand endpoint.
+    """
+    status = fetch_bot("/api/bot/status")
+    market = fetch_bot("/api/bot/market")
+    model = engine.MLP.load()
+    watchlist = load_watchlist()
+
+    bot = None
+    if status:
+        bot = {
+            "connected": status.get("connected", False),
+            "status": status.get("status"),
+            "statusMessage": status.get("statusMessage"),
+            "username": status.get("username"),
+            "position": status.get("position"),
+            "server": status.get("server"),
+            "worldState": status.get("worldState"),
+            "health": status.get("health"),
+            "food": status.get("food"),
+            "emeralds": status.get("emeralds"),
+            "viewer": {
+                "active": status.get("viewerActive", False),
+                "url": status.get("viewerUrl"),
+                "renderVersion": status.get("viewerRenderVersion"),
+                "botVersion": status.get("viewerBotVersion"),
+                "tracking": status.get("viewerTracking"),
+            },
+            "window": {
+                "open": status.get("hasOpenWindow", False),
+                "title": status.get("currentWindowTitle"),
+                "id": status.get("currentWindowId"),
+            },
+        }
+
+    market_state = None
+    if market:
+        listings = market.get("listings") or []
+        # The cheapest live ask per item: the join key between what the bot can
+        # see in game and what the price pages and the engine know about.
+        cheapest: dict[str, dict] = {}
+        for listing in listings:
+            name = listing.get("customName") or listing.get("name")
+            price = listing.get("price")
+            if not name or not price:
+                continue
+            key = name.lower()
+            if key not in cheapest or price < cheapest[key]["price"]:
+                cheapest[key] = {
+                    "item": name,
+                    "price": price,
+                    "slot": listing.get("slot"),
+                    "amount": listing.get("amount"),
+                    "seller": listing.get("seller"),
+                    "tier": listing.get("tier"),
+                }
+
+        market_state = {
+            "open": market.get("open", False),
+            "isMarket": market.get("isMarket", False),
+            "title": market.get("title"),
+            "page": market.get("page"),
+            "distance": market.get("distance"),
+            "walking": market.get("walking", False),
+            "locations": market.get("locations") or {},
+            "listingCount": len(listings),
+            "cheapest": cheapest,
+            "listings": listings,
+        }
+
+    return {
+        "ok": True,
+        "ts": time.time(),
+        "services": {
+            "botServer": status is not None,
+            "priceApi": load_api_key() is not None,
+        },
+        "bot": bot,
+        "account": (status or {}).get("account"),
+        "market": market_state,
+        "engine": {
+            "modelLoaded": model is not None,
+            "layerSizes": model.layer_sizes if model else None,
+            "features": engine.FEATURE_NAMES,
+            "strategy": engine.load_strategy(),
+            "marketFee": engine.MARKET_FEE,
+        },
+        "prices": {
+            "watchlist": watchlist,
+            "historyItems": sorted({row["item"] for row in read_all_history()}),
+        },
+    }
+
+
+def read_all_history() -> list[dict]:
+    """Every recorded snapshot, used only for listing which items we know."""
+    if not HISTORY_FILE.exists():
+        return []
+    rows = []
+    with _history_lock:
+        lines = HISTORY_FILE.read_text().splitlines()
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "item" in row:
+            rows.append(row)
+    return rows
 
 
 def build_deltas(items: list[str], use_live: bool = True, days: float = 30,
@@ -516,7 +650,7 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep request logs quiet; nothing sensitive is logged anyway
 
     def _forward_to_bot_server(self, method, parsed):
-        bot_url = f"http://127.0.0.1:8124{self.path}"
+        bot_url = f"{BOT_SERVER_URL}{self.path}"
         body = None
         if method == "POST":
             try:
@@ -552,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
             # Bot server may be starting up
             self._json(503, {
                 "ok": False,
-                "error": "WynnBot server unreachable on port 8124",
+                "error": f"WynnBot server unreachable at {BOT_SERVER_URL}",
                 "details": str(e)
             })
 
@@ -592,6 +726,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/watch/add": self._handle_watch_add,
             "/api/watch/remove": self._handle_watch_remove,
             "/api/optimize": self._handle_optimize,
+            "/api/state": self._handle_state,
             "/api/deltas": self._handle_deltas,
             "/api/plan": self._handle_plan,
             "/api/model/train": self._handle_model_train,
@@ -675,6 +810,10 @@ class Handler(BaseHTTPRequestHandler):
         raw = (params.get("items") or [""])[0]
         items = [item.strip() for item in raw.split(",") if item.strip()]
         return items or load_watchlist()
+
+    def _handle_state(self, parsed):
+        """The shared snapshot every dashboard page reads."""
+        self._json(200, build_state())
 
     def _handle_deltas(self, parsed):
         """Per-item edge: fair value (Wynnventory + local trend + model) vs the ask."""
@@ -948,7 +1087,7 @@ if __name__ == "__main__":
     # Tests and read-only runs set WYNN_NO_AUTOSPAWN so this never starts a bot.
     if bot_server_script.is_file() and os.environ.get("WYNN_NO_AUTOSPAWN") != "1":
         try:
-            with urllib.request.urlopen("http://127.0.0.1:8124/api/bot/status", timeout=1):
+            with urllib.request.urlopen(f"{BOT_SERVER_URL}/api/bot/status", timeout=1):
                 pass
         except Exception:
             print("Spawning WynnBot background service (port 8124)...")

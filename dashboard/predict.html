@@ -63,6 +63,13 @@
   .confidence.medium { background: #ffe0b2; color: #7a3c00; }
   .confidence.high { background: #c8e6c9; color: #1b5e20; }
   a.link { color: var(--accent); }
+
+  .wynn-xlink {
+    font-size: 0.72rem; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px;
+    white-space: nowrap;
+  }
+  .wynn-xlink:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -131,6 +138,7 @@
   </div>
 </div>
 
+<script src="wynn-client.js"></script>
 <script>
   const qInput = document.getElementById("q");
   const statusEl = document.getElementById("status");
@@ -232,6 +240,10 @@
       statusEl.textContent = "Enter an item name first.";
       return;
     }
+    // Record the item as soon as it is asked for, so the other pages follow
+    // even when the analysis itself has no data to work with yet.
+    WynnClient.setSelection(item);
+    renderCrossLinks();
     statusEl.textContent = "Analyzing...";
     try {
       const [trendRes, histRes] = await Promise.all([
@@ -295,6 +307,25 @@
   document.getElementById("watch").addEventListener("click", () => watch("add"));
   document.getElementById("unwatch").addEventListener("click", () => watch("remove"));
   qInput.addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
+
+  // Cross-page: open on whatever item the last page was showing, and hand it
+  // on to the others once it is analysed here.
+  const incoming = WynnClient.getSelection();
+  if (incoming && incoming.item) {
+    qInput.value = incoming.item;
+    analyze();
+  }
+  const xlinks = document.createElement("div");
+  xlinks.style.marginTop = "8px";
+  document.getElementById("status").after(xlinks);
+  function renderCrossLinks() {
+    const item = qInput.value.trim();
+    xlinks.innerHTML = item
+      ? `Open elsewhere: ${WynnClient.crossLinks(item, { exclude: ["trend"] })}`
+      : "";
+  }
+  qInput.addEventListener("input", renderCrossLinks);
+  renderCrossLinks();
 </script>
 </body>
 </html>

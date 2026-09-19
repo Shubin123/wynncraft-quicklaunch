@@ -52,6 +52,13 @@
   .status { font-size: 0.85rem; margin-top: 8px; color: var(--muted); }
   .summary { font-size: 0.9rem; margin-bottom: 12px; }
   a.link { color: var(--accent); }
+
+  .wynn-xlink {
+    font-size: 0.72rem; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px;
+    white-space: nowrap;
+  }
+  .wynn-xlink:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -122,6 +129,7 @@
   </div>
 </div>
 
+<script src="wynn-client.js"></script>
 <script>
   const EMERALDS_PER_LE = 4096;
 
@@ -202,6 +210,16 @@
       statusEl.textContent = `Failed: ${err.message}`;
     }
   }
+
+  // A basket handed over from the liquidity page or a price lookup.
+  const incoming = WynnClient.getSelection();
+  if (incoming && incoming.items.length) {
+    document.getElementById("items").value = incoming.items.join(", ");
+  }
+  document.getElementById("items").addEventListener("change", (event) => {
+    const items = event.target.value.split(",").map(v => v.trim()).filter(Boolean);
+    if (items.length) WynnClient.setSelection({ item: items[0], items });
+  });
 
   document.getElementById("run").addEventListener("click", run);
   document.getElementById("record").addEventListener("click", recordOutcome);

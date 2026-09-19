@@ -62,6 +62,13 @@
   .bar > i { display: block; height: 100%; background: var(--accent); }
   #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; max-height: 150px; overflow-y: auto; white-space: pre-wrap; }
   details summary { cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+
+  .wynn-xlink {
+    font-size: 0.72rem; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px;
+    white-space: nowrap;
+  }
+  .wynn-xlink:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -112,10 +119,10 @@
         <tr>
           <th>Item</th><th>Source</th><th class="num">Ask</th><th class="num">Fair value</th>
           <th class="num">Delta</th><th class="num">ROI</th><th class="num">Hold</th>
-          <th class="num">Units</th><th class="num">Spend</th><th class="num">Expected profit</th>
+          <th class="num">Units</th><th class="num">Spend</th><th class="num">Expected profit</th><th>Act on it</th>
         </tr>
       </thead>
-      <tbody id="legs"><tr><td colspan="10" class="status">No plan yet.</td></tr></tbody>
+      <tbody id="legs"><tr><td colspan="11" class="status">No plan yet.</td></tr></tbody>
     </table>
     <details style="margin-top:10px">
       <summary>Skipped candidates</summary>
@@ -130,10 +137,10 @@
         <tr>
           <th>Item</th><th>Source</th><th class="num">Ask</th><th class="num">Fair value</th>
           <th class="num">ROI</th><th class="num">Model</th><th class="num">Edge/day</th>
-          <th class="num">Risk</th><th class="num">Points</th><th class="num">Score</th>
+          <th class="num">Risk</th><th class="num">Points</th><th class="num">Score</th><th>Open in</th>
         </tr>
       </thead>
-      <tbody id="deltas"><tr><td colspan="10" class="status">Nothing computed yet.</td></tr></tbody>
+      <tbody id="deltas"><tr><td colspan="11" class="status">Nothing computed yet.</td></tr></tbody>
     </table>
   </div>
 
@@ -176,6 +183,7 @@
   </div>
 </div>
 
+<script src="wynn-client.js"></script>
 <script>
   const $ = (id) => document.getElementById(id);
 
@@ -183,26 +191,9 @@
     $('log').textContent = `[${new Date().toLocaleTimeString()}] ${message}\n` + $('log').textContent;
   }
 
-  function escapeHtml(text) {
-    return String(text ?? '').replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
-  }
-
-  function formatEmeralds(amount) {
-    if (amount === null || amount === undefined || isNaN(amount)) return '';
-    const units = [['stx', 262144], ['le', 4096], ['eb', 64], ['e', 1]];
-    const sign = amount < 0 ? '-' : '';
-    let left = Math.abs(Math.round(amount));
-    const parts = [];
-    for (const [unit, value] of units) {
-      const count = Math.floor(left / value);
-      if (count > 0) { parts.push(`${count}${unit}`); left -= count * value; }
-    }
-    return sign + (parts.length ? parts.join(' ') : '0e');
-  }
-
-  const percent = (value) => `${(value * 100).toFixed(1)}%`;
+  // Formatting and cross-page links come from the shared client, so every page
+  // renders the same numbers the same way.
+  const { escapeHtml, formatEmeralds, percent, crossLinks } = WynnClient;
   const signed = (value, text) => `<span class="${value >= 0 ? 'pos' : 'neg'}">${text}</span>`;
 
   async function get(path) {
@@ -232,7 +223,7 @@
   function renderDeltas(deltas) {
     const body = $('deltas');
     if (!deltas.length) {
-      body.innerHTML = '<tr><td colspan="10" class="status">No item could be priced.</td></tr>';
+      body.innerHTML = '<tr><td colspan="11" class="status">No item could be priced.</td></tr>';
       return;
     }
     body.innerHTML = deltas.map(d => `
@@ -247,6 +238,7 @@
         <td class="num">${d.risk.toFixed(3)}</td>
         <td class="num">${d.n_points}</td>
         <td class="num">${d.score.toFixed(4)}</td>
+        <td>${crossLinks(d.item, { exclude: ['liquidity'] })}</td>
       </tr>
     `).join('');
   }
@@ -277,8 +269,9 @@
         <td class="num">${leg.units}</td>
         <td class="num">${formatEmeralds(leg.spend)}</td>
         <td class="num">${signed(leg.expected_profit, formatEmeralds(leg.expected_profit))}</td>
+        <td>${crossLinks(leg.item, { exclude: ['liquidity'] })}${buyButton(leg)}</td>
       </tr>
-    `).join('') : '<tr><td colspan="10" class="status">Nothing cleared the minimum edge with this capital.</td></tr>';
+    `).join('') : '<tr><td colspan="11" class="status">Nothing cleared the minimum edge with this capital.</td></tr>';
 
     const skipped = plan.skipped || [];
     $('skipped').innerHTML = skipped.length
@@ -316,6 +309,59 @@
       `strategy: ` + Object.entries(strategy)
         .map(([key, value]) => `${escapeHtml(key)}=${Number(value).toFixed(3)}`).join(', ');
   }
+
+  // Shared state tells us which planned legs the bot can buy right now.
+  let sharedState = null;
+  function liveListingFor(item) {
+    const cheapest = sharedState && sharedState.market && sharedState.market.cheapest;
+    return cheapest ? cheapest[String(item).toLowerCase()] || null : null;
+  }
+
+  function buyButton(leg) {
+    const live = liveListingFor(leg.item);
+    if (!live) return '';
+    return ` <button class="small buy-leg" data-item="${escapeHtml(leg.item)}" ` +
+      `data-slot="${live.slot}" data-price="${live.price}" ` +
+      `style="margin-top:0;padding:1px 7px;font-size:0.72rem">buy ${formatEmeralds(live.price)}</button>`;
+  }
+
+  /**
+   * Buys a planned leg from the market window the bot already has open.
+   * The ceiling is the plan's own ask, so a listing that moved since the plan
+   * was built is refused rather than silently overpaid for.
+   */
+  async function buyLeg(button) {
+    const item = button.dataset.item;
+    const slot = parseInt(button.dataset.slot, 10);
+    const price = Number(button.dataset.price);
+    const ok = window.confirm(
+      `Buy "${item}" from the bot's open market window for ${formatEmeralds(price)}?\n\n` +
+      'This spends real in-game emeralds and cannot be undone.'
+    );
+    if (!ok) return;
+    log(`Buying ${item} at ${formatEmeralds(price)}…`);
+    const { body } = await WynnClient.post('/api/bot/market/buy', {
+      slot, confirm: true, maxPrice: price
+    });
+    log(body.ok ? `Bought ${item}.` : `Buy failed: ${body.error}`);
+  }
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('.buy-leg');
+    if (button) buyLeg(button);
+  });
+
+  WynnClient.subscribe((state) => { sharedState = state; });
+
+  // An item or basket handed over from another page.
+  const incoming = WynnClient.getSelection();
+  if (incoming && incoming.items.length) {
+    $('items').value = incoming.items.join(', ');
+  }
+  $('items').addEventListener('change', () => {
+    const items = $('items').value.split(',').map(v => v.trim()).filter(Boolean);
+    if (items.length) WynnClient.setSelection({ item: items[0], items });
+  });
 
   $('run').onclick = buildPlan;
   $('deltasOnly').onclick = () => { log('Computing deltas…'); loadDeltas(); };

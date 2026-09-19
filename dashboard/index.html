@@ -77,6 +77,13 @@
   table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
   th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; }
+
+  .wynn-xlink {
+    font-size: 0.72rem; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px;
+    white-space: nowrap;
+  }
+  .wynn-xlink:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -98,7 +105,7 @@
     <button id="lookup">Look up price</button>
     <div class="status" id="lookup-status"></div>
     <table id="results" hidden>
-      <thead><tr><th>Item</th><th>Lowest</th><th>Highest</th><th>Average</th><th>Listings</th></tr></thead>
+      <thead><tr><th>Item</th><th>Lowest</th><th>Highest</th><th>Average</th><th>Listings</th><th>Live in game</th><th>Open in</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -114,6 +121,7 @@
   </div>
 </div>
 
+<script src="wynn-client.js"></script>
 <script>
   const lookupBtn = document.getElementById("lookup");
   const qInput = document.getElementById("q");
@@ -131,6 +139,8 @@
       return;
     }
 
+    WynnClient.setSelection(item);
+    renderCrossLinks();
     lookupStatus.textContent = "Looking up...";
     try {
       const res = await fetch(`/api/price?item=${encodeURIComponent(item)}`);
@@ -138,11 +148,21 @@
       if (!res.ok) {
         throw new Error(data.error || `Request failed (${res.status})`);
       }
+      const name = data.name ?? item;
+      const live = liveAskFor(name);
       const row = document.createElement("tr");
-      row.innerHTML = `<td>${data.name ?? item}</td><td>${data.lowest_price ?? "-"}</td><td>${data.highest_price ?? "-"}</td><td>${data.average_price ?? "-"}</td><td>${data.total_count ?? "-"}</td>`;
+      row.innerHTML =
+        `<td>${WynnClient.escapeHtml(name)}</td>` +
+        `<td>${data.lowest_price ?? "-"}</td><td>${data.highest_price ?? "-"}</td>` +
+        `<td>${data.average_price ?? "-"}</td><td>${data.total_count ?? "-"}</td>` +
+        `<td>${live ? WynnClient.formatEmeralds(live.price) : "-"}</td>` +
+        `<td>${WynnClient.crossLinks(name, { exclude: ["price"] })}</td>`;
       resultsBody.appendChild(row);
       resultsTable.hidden = false;
       lookupStatus.textContent = "";
+      // The server may know a better spelling of the name than the user typed.
+      WynnClient.setSelection(name);
+      renderCrossLinks();
     } catch (err) {
       lookupStatus.textContent = `Lookup failed: ${err.message}`;
     }
@@ -150,6 +170,35 @@
 
   lookupBtn.addEventListener("click", lookup);
   qInput.addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
+
+  // Shared state: what the bot can see in game right now, so a lookup can show
+  // the real ask beside Wynnventory's aggregate.
+  let sharedState = null;
+  function liveAskFor(name) {
+    const cheapest = sharedState && sharedState.market && sharedState.market.cheapest;
+    return cheapest ? cheapest[String(name).toLowerCase()] || null : null;
+  }
+  WynnClient.subscribe((state) => { sharedState = state; });
+
+  // Links onward stay visible whether or not the lookup itself succeeds.
+  const xlinks = document.createElement("div");
+  xlinks.style.marginTop = "8px";
+  lookupStatus.after(xlinks);
+  function renderCrossLinks() {
+    const item = qInput.value.trim();
+    xlinks.innerHTML = item
+      ? `Open elsewhere: ${WynnClient.crossLinks(item, { exclude: ["price"] })}`
+      : "";
+  }
+  qInput.addEventListener("input", renderCrossLinks);
+
+  // An item handed over from another page opens straight into its price.
+  const incoming = WynnClient.getSelection();
+  if (incoming && incoming.item) {
+    qInput.value = incoming.item;
+    lookup();
+  }
+  renderCrossLinks();
 </script>
 </body>
 </html>

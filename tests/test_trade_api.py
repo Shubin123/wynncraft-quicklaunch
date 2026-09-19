@@ -9,9 +9,11 @@ this runs on when the upstream API is unavailable, where the local time series
 has to carry the pipeline on its own.
 """
 
+import http.server
 import json
 import os
 import subprocess
+import threading
 import sys
 import tempfile
 import time
@@ -21,6 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("WYNN_TEST_PORT", "8791"))
+BOT_STUB_PORT = int(os.environ.get("WYNN_TEST_BOT_STUB_PORT", "8792"))
 BASE = f"http://localhost:{PORT}"
 
 PASSED = 0
@@ -77,6 +80,68 @@ def seed_history(home: Path, items: dict[str, list[float]], step_hours=12):
     (config_dir / "watchlist.json").write_text(json.dumps(list(items)))
 
 
+class BotStub(threading.Thread):
+    """Answers the two bot endpoints /api/state reads, and nothing else."""
+
+    def __init__(self, port):
+        super().__init__(daemon=True)
+        self.port = port
+        self.connected = True
+        handler = self._make_handler()
+        self.httpd = http.server.ThreadingHTTPServer(("localhost", port), handler)
+
+    def _make_handler(self):
+        stub = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                if self.path.startswith("/api/bot/status"):
+                    payload = {
+                        "connected": stub.connected,
+                        "status": "connected" if stub.connected else "disconnected",
+                        "username": "TestBot",
+                        "position": {"x": 1, "y": 2, "z": 3},
+                        "viewerActive": True,
+                        "viewerUrl": "http://localhost:3000",
+                        "viewerRenderVersion": "1.21.4",
+                        "viewerBotVersion": "26.1",
+                        "account": {"using": {"name": "TestBot"}, "locked": True, "source": "lock"},
+                    }
+                elif self.path.startswith("/api/bot/market"):
+                    payload = {
+                        "ok": True,
+                        "open": True,
+                        "isMarket": True,
+                        "title": "Trade Market",
+                        "listings": [
+                            {"slot": 10, "customName": "Spring", "price": 12000, "amount": 1},
+                            {"slot": 11, "customName": "Spring", "price": 9000, "amount": 1},
+                            {"slot": 12, "customName": "Wybel Paw", "price": 800, "amount": 3},
+                        ],
+                    }
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                body = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        return Handler
+
+    def run(self):
+        self.httpd.serve_forever()
+
+    def stop(self):
+        self.httpd.shutdown()
+
+
 def wait_for_server(process, attempts=60):
     for _ in range(attempts):
         if process.poll() is not None:
@@ -100,6 +165,10 @@ with tempfile.TemporaryDirectory() as tmp:
                    5150, 5300, 5500, 5650, 5900, 6100, 6300, 6500],
         "wybel paw": [900, 1500, 850, 1600, 800, 1700, 820, 1650, 900, 1500,
                       880, 1550, 910, 1480, 870, 1620, 930, 1510],
+        # Recorded locally but not listed in the stub market, so it can only be
+        # valued from history - the other half of the join.
+        "comet": [21000, 21500, 22000, 21800, 22500, 23000, 23500, 24000,
+                  24200, 24500, 25000, 25200, 25500, 26000, 26200, 26500, 27000, 27500],
     })
 
     env = {
@@ -107,8 +176,14 @@ with tempfile.TemporaryDirectory() as tmp:
         "HOME": str(home),
         "WYNN_DASHBOARD_PORT": str(PORT),
         "WYNN_NO_AUTOSPAWN": "1",
+        # A stub stands in for the bot server, so /api/state is hermetic and
+        # the real bot (if one is running) is never touched.
+        "WYNN_BOT_SERVER_URL": f"http://localhost:{BOT_STUB_PORT}",
     }
     env.pop("WYNNVENTORY_API_KEY", None)
+
+    bot_stub = BotStub(BOT_STUB_PORT)
+    bot_stub.start()
 
     server = subprocess.Popen(
         [sys.executable, str(REPO / "scripts" / "wynn_price_server.py")],
@@ -127,19 +202,30 @@ with tempfile.TemporaryDirectory() as tmp:
             assert body["strategy"]["w_delta"] == 1.0, body["strategy"]
             assert "w_delta" in body["strategy_bounds"]
 
-        @test("Deltas are computed from local history when Wynnventory is unavailable")
+        @test("Deltas join the live in-game ask with the local history")
         def _():
             status, body = get("/api/deltas")
             assert status == 200, body
             assert body["deltas"], f"expected deltas from the seeded history: {body}"
             by_item = {d["item"]: d for d in body["deltas"]}
-            assert "spring" in by_item, by_item.keys()
+
+            # The bot can see Spring in the market, so its ask is the real one,
+            # not the last price we happened to record.
             spring = by_item["spring"]
-            assert spring["source"] == "local_history", spring["source"]
-            assert spring["ask"] == 6500, spring
-            assert spring["n_points"] == 18, spring
-            assert -1 < spring["roi"] < 1, spring
-            assert body["live_listings_used"] == 0, "no bot market window is open in this test"
+            assert spring["source"] == "live_listing", spring["source"]
+            assert spring["ask"] == 9000, "the cheapest live listing wins"
+            # The live ask sets the price we would pay; it is not folded into
+            # the recorded series, which stays exactly as long as it was.
+            assert spring["n_points"] == 18, spring["n_points"]
+            assert spring["live_listing"]["slot"] == 11, spring["live_listing"]
+
+            # Comet is not listed in game, so it falls back to what we recorded.
+            comet = by_item["comet"]
+            assert comet["source"] == "local_history", comet["source"]
+            assert comet["ask"] == 27500, comet
+            assert comet["n_points"] == 18, comet
+
+            assert body["live_listings_used"] == 2, body["live_listings_used"]
             assert body["model_loaded"] is False
 
         @test("An unknown item is reported as skipped, not silently dropped")
@@ -246,11 +332,11 @@ with tempfile.TemporaryDirectory() as tmp:
 
         @test("Existing price-server endpoints still work alongside the new ones")
         def _():
-            status, body = get("/api/history_local?item=spring&days=30")
+            status, body = get("/api/history_local?item=comet&days=30")
             assert status == 200, body
             assert len(body["points"]) == 18, body
 
-            status, body = get("/api/trend?item=spring&days=30")
+            status, body = get("/api/trend?item=comet&days=30")
             assert status == 200, body
             assert body["regression"]["n"] == 18
             assert body["regression"]["slope_per_day"] > 0, "the seeded series rises"
@@ -258,6 +344,46 @@ with tempfile.TemporaryDirectory() as tmp:
             status, body = get("/api/watchlist")
             assert status == 200, body
             assert "spring" in body["watchlist"], body
+
+        @test("/api/state is one snapshot of bot, account, market, engine and prices")
+        def _():
+            status, body = get("/api/state")
+            assert status == 200, body
+            assert body["ok"] is True
+            assert body["services"]["botServer"] is True, body["services"]
+            assert body["bot"]["username"] == "TestBot", body["bot"]
+            assert body["bot"]["viewer"]["renderVersion"] == "1.21.4"
+            assert body["account"]["locked"] is True, body["account"]
+            assert body["engine"]["modelLoaded"] in (True, False)
+            assert body["engine"]["marketFee"] == 0.05
+            assert "spring" in body["prices"]["historyItems"], body["prices"]
+
+        @test("The snapshot carries the cheapest live ask per item")
+        def _():
+            status, body = get("/api/state")
+            assert status == 200, body
+            market = body["market"]
+            assert market["listingCount"] == 3, market
+            cheapest = market["cheapest"]
+            # Two Spring listings were sent; only the cheaper one survives.
+            assert cheapest["spring"]["price"] == 9000, cheapest["spring"]
+            assert cheapest["spring"]["slot"] == 11
+            assert cheapest["wybel paw"]["price"] == 800
+
+        @test("A stopped bot server degrades the snapshot instead of failing it")
+        def _():
+            bot_stub.stop()
+            try:
+                status, body = get("/api/state")
+                assert status == 200, body
+                assert body["ok"] is True, "the dashboard must still answer"
+                assert body["services"]["botServer"] is False
+                assert body["bot"] is None and body["market"] is None
+                # The half that does not need the bot is still there.
+                assert body["engine"]["features"], body["engine"]
+                assert "spring" in body["prices"]["historyItems"]
+            finally:
+                pass
 
         @test("The dashboard pages are still served")
         def _():
@@ -275,6 +401,7 @@ with tempfile.TemporaryDirectory() as tmp:
             server.wait(timeout=5)
         except subprocess.TimeoutExpired:
             server.kill()
+        bot_stub.stop()
 
 if FAILED:
     print(f"\n\033[1;31mTrade API tests: {PASSED} passed, {FAILED} failed.\033[0m")

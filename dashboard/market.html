@@ -83,6 +83,13 @@
   .legend { font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
   .legend b { font-weight: 600; }
   #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; max-height: 160px; overflow-y: auto; white-space: pre-wrap; }
+
+  .wynn-xlink {
+    font-size: 0.72rem; color: var(--accent); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px;
+    white-space: nowrap;
+  }
+  .wynn-xlink:hover { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -151,9 +158,9 @@
     </div>
     <table>
       <thead>
-        <tr><th>Slot</th><th>Item</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th></th></tr>
+        <tr><th>Slot</th><th>Item</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th>Open in</th><th></th></tr>
       </thead>
-      <tbody id="listings"><tr><td colspan="8" class="status">No market window open.</td></tr></tbody>
+      <tbody id="listings"><tr><td colspan="9" class="status">No market window open.</td></tr></tbody>
     </table>
   </div>
 
@@ -163,6 +170,7 @@
   </div>
 </div>
 
+<script src="wynn-client.js"></script>
 <script>
   const $ = (id) => document.getElementById(id);
   let latest = null;
@@ -172,20 +180,8 @@
     $('log').textContent = `[${now}] ${message}\n` + $('log').textContent;
   }
 
-  /**
-   * Renders emerald amounts the way Wynncraft writes them.
-   */
-  function formatEmeralds(amount) {
-    if (amount === null || amount === undefined || isNaN(amount)) return '';
-    const units = [['stx', 262144], ['le', 4096], ['eb', 64], ['e', 1]];
-    let left = Math.max(0, Math.round(amount));
-    const parts = [];
-    for (const [unit, value] of units) {
-      const count = Math.floor(left / value);
-      if (count > 0) { parts.push(`${count}${unit}`); left -= count * value; }
-    }
-    return parts.length ? parts.join(' ') : '0e';
-  }
+  // Formatting and cross-page links come from the shared client.
+  const { formatEmeralds, escapeHtml, crossLinks } = WynnClient;
 
   async function get(path) {
     const res = await fetch(path);
@@ -224,12 +220,6 @@
     return `<span class="idx">${slot.slot}</span><div>${escapeHtml(name)}</div>${price}`;
   }
 
-  function escapeHtml(text) {
-    return String(text).replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
-  }
-
   function renderGui(data) {
     const gui = $('gui');
     gui.innerHTML = '';
@@ -260,7 +250,7 @@
     const listings = (data.ok && data.listings) || [];
     $('listing-count').textContent = listings.length ? `${listings.length} shown` : '';
     if (!listings.length) {
-      body.innerHTML = '<tr><td colspan="8" class="status">No listings in the open window.</td></tr>';
+      body.innerHTML = '<tr><td colspan="9" class="status">No listings in the open window.</td></tr>';
       return;
     }
     body.innerHTML = listings.map(listing => `
@@ -272,6 +262,7 @@
         <td class="num">${listing.price ?? ''}</td>
         <td class="num">${listing.amount ?? ''}</td>
         <td>${escapeHtml(listing.seller || '')}</td>
+        <td>${crossLinks(listing.customName || listing.name, { exclude: ['market'] })}</td>
         <td><button class="small" data-slot="${listing.slot}">Buy</button></td>
       </tr>
     `).join('');
@@ -360,6 +351,20 @@
 
   loadLocations();
   setInterval(refresh, 10000);
+
+  // An item sent here from the price, trend or delta pages.
+  const incoming = WynnClient.getSelection();
+  if (incoming && (incoming.search || incoming.item)) {
+    $('query').value = incoming.search || incoming.item;
+    log(`Loaded "${$('query').value}" from another page. Press Search to look it up in game.`);
+  }
+
+  const originalSearch = $('search').onclick;
+  $('search').onclick = () => {
+    const query = $('query').value.trim();
+    if (query) WynnClient.setSelection(query);
+    originalSearch();
+  };
 </script>
 <script src="inventory-pane.js"></script>
 </body>
