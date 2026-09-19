@@ -260,6 +260,9 @@ class BotManager extends EventEmitter {
       antiAfk: this.antiAfkEnabled,
       viewerActive: this.viewerActive,
       viewerUrl: this.viewerActive ? `http://${getHostname()}:${VIEWER_PORT}` : null,
+      viewerRenderVersion: this.bot?.viewerInfo?.renderVersion || null,
+      viewerBotVersion: this.bot?.viewerInfo?.botVersion || null,
+      viewerTracking: this.bot?.viewerInfo?.trackingOverlay ?? null,
       emeralds: { total: 0, le: 0, eb: 0, e: 0, formatted: '0 E' },
       currentActionBar: this.currentActionBar || this.bot?.wynn?.currentActionBar || '',
       filteredSpamCount: this.filteredSpamCount,
@@ -800,6 +803,28 @@ class BotManager extends EventEmitter {
   }
 
   /**
+   * Just the bot's position, for pollers like the viewer's tracking camera
+   * that would otherwise pull the whole status payload several times a second.
+   */
+  getPosition() {
+    const pos = this.bot?.entity?.position;
+    if (!this.bot || this.status !== 'connected' || !pos) {
+      return { ok: false, error: 'Bot is not connected', position: null };
+    }
+    return {
+      ok: true,
+      position: {
+        x: Math.round(pos.x * 100) / 100,
+        y: Math.round(pos.y * 100) / 100,
+        z: Math.round(pos.z * 100) / 100,
+        yaw: Math.round((this.bot.entity.yaw || 0) * 1000) / 1000,
+        pitch: Math.round((this.bot.entity.pitch || 0) * 1000) / 1000
+      },
+      username: this.bot.username || null
+    };
+  }
+
+  /**
    * Reads the Trade Market window the bot currently has open.
    */
   getMarket() {
@@ -1136,6 +1161,10 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/entities') {
       return json(200, { entities: manager.getEntities() });
+    }
+
+    if (pathname === '/api/bot/position') {
+      return json(200, manager.getPosition());
     }
 
     if (pathname === '/api/bot/market') {

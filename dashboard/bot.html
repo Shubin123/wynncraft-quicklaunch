@@ -651,6 +651,10 @@
               </span>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
+              <button class="secondary small" id="viewer-track-btn" onclick="toggleViewerTracking()"
+                      title="Keep the camera on the character as it moves (your angle and zoom are kept)">
+                ◎ Track character
+              </button>
               <button class="secondary small" onclick="reloadViewer()">Reload View</button>
               <a href="http://localhost:3000" target="_blank" rel="noopener" style="font-size:0.8rem;color:var(--cyan);text-decoration:none">
                 Pop Out &nearr;
@@ -663,7 +667,7 @@
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:0.76rem;color:var(--muted)">
             <span>Real-time Three.js canvas rendered directly from server world chunks.</span>
-            <span>Version Compatibility: 1.21.1 / Protocol 775</span>
+            <span id="viewer-version-label">Version Compatibility: Protocol 775</span>
           </div>
         </div>
       </div>
@@ -990,6 +994,9 @@
   const chatInput = document.getElementById('chat-input');
   const viewerCard = document.getElementById('viewer-card');
   const viewerFrame = document.getElementById('viewer-frame');
+  const viewerTrackBtn = document.getElementById('viewer-track-btn');
+  const viewerVersionLabel = document.getElementById('viewer-version-label');
+  let viewerTracking = false;
   const waypointChips = document.getElementById('waypoint-chips');
   const tickerText = document.getElementById('ticker-text');
 
@@ -1133,6 +1140,17 @@
       }
     }
 
+    if (viewerVersionLabel) {
+      // The bot speaks 26.1 (protocol 775); the viewer renders a version its
+      // bundle supports, so show both rather than a hardcoded guess.
+      viewerVersionLabel.textContent = data.viewerRenderVersion
+        ? `Rendering ${data.viewerRenderVersion} · bot protocol ${data.viewerBotVersion || '26.1'}`
+        : 'Version Compatibility: Protocol 775';
+    }
+    if (viewerTrackBtn) {
+      viewerTrackBtn.disabled = !data.viewerActive;
+    }
+
     // Gates
     if (data.availableGates) {
       renderGates(data.availableGates);
@@ -1147,6 +1165,28 @@
       viewerFrame.src = viewerFrame.src;
     }
   }
+
+  function renderViewerTrackButton() {
+    if (!viewerTrackBtn) return;
+    viewerTrackBtn.textContent = viewerTracking ? '◉ Tracking character' : '◎ Track character';
+    viewerTrackBtn.classList.toggle('active', viewerTracking);
+  }
+
+  function toggleViewerTracking() {
+    if (!viewerFrame || !viewerFrame.contentWindow) return;
+    viewerTracking = !viewerTracking;
+    renderViewerTrackButton();
+    // The viewer runs on its own port, so the overlay inside it is only
+    // reachable by postMessage; it echoes its real state back below.
+    viewerFrame.contentWindow.postMessage({ type: 'wynn:viewer:track', enabled: viewerTracking }, '*');
+  }
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.type !== 'wynn:viewer:state') return;
+    viewerTracking = !!data.tracking;
+    renderViewerTrackButton();
+  });
 
   // ==========================================
   // SSE Event Streaming

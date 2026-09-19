@@ -130,7 +130,9 @@ function createWynnBot(userOptions = {}) {
   if (userOptions.viewer) {
     bot.once('spawn', () => {
       const viewerPort = typeof userOptions.viewer === 'number' ? userOptions.viewer : 3000;
-      attachViewer(bot, { port: viewerPort });
+      // Kept on the bot so the control server can report what the viewer is
+      // rendering as, and whether the tracking overlay is in place.
+      bot.viewerInfo = attachViewer(bot, { port: viewerPort });
     });
   }
 
