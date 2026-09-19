@@ -94,6 +94,31 @@ Options:
 
 ---
 
+## 3D Viewer Rendering Version
+
+Wynncraft (WynnProxy) speaks protocol 775, which Mineflayer knows as Minecraft
+`26.1`. The `prismarine-viewer` browser bundle does not: its supported version
+list stops at `1.21.4` and its bundled `minecraft-data` has no `26.1` entry. When
+the viewer is handed `26.1` it aborts `setVersion()`, the chunk worker is never
+started, and the page renders an empty world.
+
+`src/viewer.js` therefore renders with the newest version the viewer does
+support (`1.21.4` by default) and translates block state ids on the way out:
+
+- Block state ids are matched by block name + properties, not by number, because
+  the two versions disagree from block id 133 onwards. ~93% of states map
+  exactly; the rest fall back to the block's default state, and blocks that do
+  not exist in the render version become stone (full cubes) or air.
+- Chunk sections using a `direct` palette are re-encoded as `indirect`, because
+  `prismarine-chunk` drops the bit array when deserializing a direct container
+  from JSON.
+
+Override the render version with `WYNN_VIEWER_MC_VERSION`. It must stay in sync
+with `scripts/apply_wynn_textures.py`, which patches the texture atlas of that
+same version with the official Wynncraft resource pack art.
+
+Run `node tests/test_viewer.js` to verify the translation layer.
+
 ## Interactive Terminal REPL
 
 When the bot connects, you get an interactive prompt:

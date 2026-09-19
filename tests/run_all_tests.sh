@@ -24,15 +24,18 @@ echo "Target Host: http://localhost:8123"
 echo "Server Status: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:8123/api/bot/status || echo "Offline")"
 echo ""
 
-# 1. Module Tests
+# 1. Mineflayer viewer block-state translation (no running server needed)
+node "$REPO_DIR/mineflayer-wynn/tests/test_viewer.js"
+
+# 2. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 2. Integration Tests
+# 3. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 3. E2E Tests
+# 4. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="
-echo "  ALL TEST SUITES PASSED SUCCESSFULLY (70/70)     "
+echo "  ALL TEST SUITES PASSED SUCCESSFULLY              "
 echo "=================================================="

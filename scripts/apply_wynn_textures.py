@@ -3,9 +3,12 @@
 Applies the official Wynncraft resource pack textures to prismarine-viewer and Prism Launcher.
 - Extracts block, item, entity, and custom textures from the Wynncraft resource pack,
   handling Wynncraft's custom zip obfuscation (empty local headers & scrambled PNG CRCs).
-- Patches matching block texture files and regenerates the 1.21.1 and 26.1 texture atlases
-  preserving the exact vanilla layout so block models align perfectly.
-- Links 26.1.png and blocksStates/26.1.json so the 3D viewer displays custom Wynncraft blocks.
+- Patches matching block texture files and regenerates the texture atlas of the version
+  the 3D viewer renders with, preserving the exact vanilla layout so block models align.
+- The render version must match mineflayer-wynn/src/blockstates.js: Wynncraft speaks
+  protocol 775 ('26.1'), which prismarine-viewer's browser bundle cannot render, so the
+  viewer renders as RENDER_VERSION and translates block state ids. Override both with
+  WYNN_VIEWER_MC_VERSION.
 - Places the official resource pack zip into Prism Launcher's server-resource-packs directory.
 """
 
@@ -17,6 +20,13 @@ import shutil
 import json
 from io import BytesIO
 from PIL import Image, ImageFile, PngImagePlugin
+
+# Minecraft version the 3D viewer renders with; keep in sync with
+# mineflayer-wynn/src/blockstates.js (DEFAULT_RENDER_VERSION).
+RENDER_VERSION = os.environ.get('WYNN_VIEWER_MC_VERSION', '1.21.4')
+
+# Minecraft textures are 16x16 pixels per atlas tile.
+TILE_SIZE = 16
 
 # Bypass PNG CRC verification and allow truncated images (Minecraft/STB ignores them, Wynncraft intentionally scrambles/strips them)
 PngImagePlugin.PngStream.crc = PngImagePlugin.PngStream.crc_skip
@@ -59,10 +69,14 @@ def apply_wynncraft_textures():
         sys.exit(1)
 
     textures_dir = os.path.join(pv_base, 'textures')
-    blocks_dir = os.path.join(textures_dir, '1.21.1/blocks')
-    entities_dir = os.path.join(textures_dir, '1.21.1/entity')
-    items_dir = os.path.join(textures_dir, '1.21.1/items')
-    wynn_dir = os.path.join(textures_dir, '1.21.1/wynn')
+    version_dir = os.path.join(textures_dir, RENDER_VERSION)
+    if not os.path.isdir(version_dir):
+        print(f"Error: prismarine-viewer has no assets for render version {RENDER_VERSION} ({version_dir})")
+        sys.exit(1)
+    blocks_dir = os.path.join(version_dir, 'blocks')
+    entities_dir = os.path.join(version_dir, 'entity')
+    items_dir = os.path.join(version_dir, 'items')
+    wynn_dir = os.path.join(version_dir, 'wynn')
     os.makedirs(wynn_dir, exist_ok=True)
 
     print(f"[1/5] Opening Wynncraft resource pack ({os.path.getsize(rp_zip_path) // 1024 // 1024} MB)...")
@@ -75,6 +89,7 @@ def apply_wynncraft_textures():
     # 1. Update block textures
     print(f"[2/5] Patching block textures with Wynncraft custom block art ({len(existing_blocks)} base blocks)...")
     patched_blocks = 0
+    patched_files = set()
     with open(rp_zip_path, 'rb') as zip_fp:
         for zinfo in zf.filelist:
             name = zinfo.filename
@@ -89,6 +104,7 @@ def apply_wynncraft_textures():
                     
                     target_path = os.path.join(blocks_dir, filename)
                     img.save(target_path, format='PNG')
+                    patched_files.add(filename)
                     patched_blocks += 1
                 except Exception as e:
                     pass
@@ -131,13 +147,13 @@ def apply_wynncraft_textures():
 
     print(f"  -> Extracted {patched_entities} entity textures, {patched_items} item textures, and custom Wynn assets")
 
-    # 3. Rebuild Texture Atlas 1.21.1.png matching prismarine-viewer layout with exact UV alignment
-    print("[4/5] Rebuilding 1.21.1 texture atlas (512x512) matching prismarine-viewer UV layout...")
+    # 3. Rebuild the render version's texture atlas matching prismarine-viewer layout with exact UV alignment
+    print(f"[4/5] Patching {RENDER_VERSION} texture atlas to match prismarine-viewer UV layout...")
     
     # Load block states and models to map exact (x, y) slot per texture
-    bm_path = os.path.join(textures_dir, '1.21.1/blocks_models.json')
-    bs_raw_path = os.path.join(textures_dir, '1.21.1/blocks_states.json')
-    bs_res_path = os.path.join(pv_base, 'blocksStates/1.21.1.json')
+    bm_path = os.path.join(version_dir, 'blocks_models.json')
+    bs_raw_path = os.path.join(version_dir, 'blocks_states.json')
+    bs_res_path = os.path.join(pv_base, 'blocksStates', f'{RENDER_VERSION}.json')
 
     def clean_name(name):
         if not isinstance(name, str): return ''
@@ -176,6 +192,25 @@ def apply_wynncraft_textures():
             tex_dict[k] = val
         return tex_dict
 
+    # The atlas geometry differs per version (1.21.1 is 32x32 tiles, 1.21.4 is 64x64),
+    # and blocksStates UVs are fractions of the whole atlas, so derive the grid from the
+    # vanilla atlas instead of assuming a size.
+    atlas_path = os.path.join(textures_dir, f'{RENDER_VERSION}.png')
+    vanilla_atlas_path = os.path.join(textures_dir, f'{RENDER_VERSION}.vanilla.png')
+    if not os.path.exists(atlas_path):
+        print(f"Error: prismarine-viewer atlas not found at {atlas_path}")
+        sys.exit(1)
+    # Snapshot the untouched atlas once so re-runs always patch a clean base.
+    if not os.path.exists(vanilla_atlas_path):
+        shutil.copyfile(atlas_path, vanilla_atlas_path)
+
+    atlas = Image.open(vanilla_atlas_path).convert('RGBA')
+    if atlas.width % TILE_SIZE or atlas.height % TILE_SIZE:
+        print(f"Error: atlas {atlas.size} is not a whole number of {TILE_SIZE}px tiles")
+        sys.exit(1)
+    tiles_per_row = atlas.width // TILE_SIZE
+    tiles_per_col = atlas.height // TILE_SIZE
+
     tile_to_tex = {}
     tex_to_tile = {}
 
@@ -188,8 +223,8 @@ def apply_wynncraft_textures():
         t_resolved = m_resolved.get('textures', {})
         for tkey, tinfo in t_resolved.items():
             if isinstance(tinfo, dict) and 'u' in tinfo and 'v' in tinfo:
-                x = round(tinfo['u'] / 0.03125)
-                y = round(tinfo['v'] / 0.03125)
+                x = round(tinfo['u'] * tiles_per_row)
+                y = round(tinfo['v'] * tiles_per_col)
                 raw_val = tex_map.get(tkey)
                 if raw_val and isinstance(raw_val, str) and not raw_val.startswith('#'):
                     tex_file = clean_name(raw_val) + '.png'
@@ -221,82 +256,37 @@ def apply_wynncraft_textures():
                     for rv, raw_item in zip(r_list, raw_list):
                         process_model(raw_item, rv)
 
-    print(f"  -> Discovered {len(tile_to_tex)} exact UV tile coordinates from block models")
+    print(f"  -> Discovered {len(tile_to_tex)} exact UV tile coordinates from block models "
+          f"({tiles_per_row}x{tiles_per_col} tile atlas)")
 
-    # Build 512x512 atlas (32x32 tiles of 16x16 pixels)
-    tex_size = 32
-    tile_size = 16
-    img_size = tex_size * tile_size # 512
-    atlas = Image.new('RGBA', (img_size, img_size), (0, 0, 0, 0))
-    missing_texture_path = os.path.abspath(os.path.join(pv_base, '../viewer/lib/missing_texture.png'))
-
-    # (0, 0) is missing_texture
-    if os.path.exists(missing_texture_path):
-        t_img = Image.open(missing_texture_path).convert('RGBA').resize((16, 16))
-        atlas.paste(t_img, (0, 0))
-
-    # Place resolved textures in their exact slots
-    placed_tiles = set([(0, 0)])
-    placed_textures = set(['missing_texture.png'])
-
+    # Paste the Wynncraft art into the tiles we resolved, leaving every other tile
+    # exactly as the vanilla atlas has it. Rebuilding the atlas from scratch and
+    # back-filling unresolved slots would move textures out from under the UVs that
+    # blocksStates already points at.
+    replaced_tiles = 0
+    skipped_tiles = 0
     for (tx, ty), tex_file in tile_to_tex.items():
-        if tx < 0 or tx >= tex_size or ty < 0 or ty >= tex_size:
+        if tx < 0 or tx >= tiles_per_row or ty < 0 or ty >= tiles_per_col:
+            skipped_tiles += 1
+            continue
+        if tex_file not in patched_files:
             continue
         file_path = os.path.join(blocks_dir, tex_file)
-        if os.path.exists(file_path):
-            try:
-                t_img = Image.open(file_path).convert('RGBA')
-                if t_img.size != (16, 16):
-                    t_img = t_img.crop((0, 0, 16, 16))
-                atlas.paste(t_img, (tx * tile_size, ty * tile_size))
-                placed_tiles.add((tx, ty))
-                placed_textures.add(tex_file)
-            except Exception:
-                pass
-
-    # Fill remaining unmapped slots with remaining textures
-    unplaced_files = [f for f in original_texture_files if f not in placed_textures]
-    unplaced_iter = iter(unplaced_files)
-    for ty in range(tex_size):
-        for tx in range(tex_size):
-            if (tx, ty) not in placed_tiles:
-                try:
-                    tex_file = next(unplaced_iter)
-                    file_path = os.path.join(blocks_dir, tex_file)
-                    if os.path.exists(file_path):
-                        t_img = Image.open(file_path).convert('RGBA')
-                        if t_img.size != (16, 16):
-                            t_img = t_img.crop((0, 0, 16, 16))
-                        atlas.paste(t_img, (tx * tile_size, ty * tile_size))
-                except StopIteration:
-                    break
-
-    atlas_1211_path = os.path.join(textures_dir, '1.21.1.png')
-    atlas.save(atlas_1211_path, format='PNG')
-    print(f"  -> Saved Wynncraft atlas to {atlas_1211_path}")
-
-    # Create 26.1.png (protocol 775 alias used by WynnProxy)
-    atlas_261_path = os.path.join(textures_dir, '26.1.png')
-    atlas.save(atlas_261_path, format='PNG')
-    print(f"  -> Saved protocol 26.1 Wynncraft atlas to {atlas_261_path}")
-
-    # 4. Copy blocksStates/1.21.1.json to blocksStates/26.1.json
-    bs_dir = os.path.join(pv_base, 'blocksStates')
-    bs_1211 = os.path.join(bs_dir, '1.21.1.json')
-    bs_261 = os.path.join(bs_dir, '26.1.json')
-    if os.path.exists(bs_1211):
-        shutil.copyfile(bs_1211, bs_261)
-        print(f"  -> Linked block states to {bs_261}")
-
-    # Copy 1.21.1 textures dir to 26.1 dir
-    t_261_dir = os.path.join(textures_dir, '26.1')
-    if not os.path.exists(t_261_dir):
+        if not os.path.exists(file_path):
+            continue
         try:
-            os.symlink(os.path.join(textures_dir, '1.21.1'), t_261_dir)
-            print(f"  -> Symlinked {t_261_dir} -> 1.21.1")
-        except OSError:
-            shutil.copytree(os.path.join(textures_dir, '1.21.1'), t_261_dir)
-            print(f"  -> Copied {t_261_dir} -> 1.21.1")
+            t_img = Image.open(file_path).convert('RGBA')
+            if t_img.size != (TILE_SIZE, TILE_SIZE):
+                t_img = t_img.crop((0, 0, TILE_SIZE, TILE_SIZE))
+            atlas.paste(t_img, (tx * TILE_SIZE, ty * TILE_SIZE))
+            replaced_tiles += 1
+        except Exception:
+            pass
+
+    atlas.save(atlas_path, format='PNG')
+    print(f"  -> Replaced {replaced_tiles} atlas tiles with Wynncraft art "
+          f"({skipped_tiles} out-of-range UVs skipped)")
+    print(f"  -> Saved Wynncraft atlas to {atlas_path}")
 
     # 5. Place in Prism Launcher resource pack folders
     print("[5/5] Deploying Wynncraft Resource Pack to Prism Launcher instance...")

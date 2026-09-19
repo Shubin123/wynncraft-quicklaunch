@@ -685,25 +685,52 @@ async function runAll() {
       path.join(os.homedir(), '.npm-global/lib/node_modules/prismarine-viewer/public')
     ];
     const pvPublic = candidatePv.find(d => fs.existsSync(d)) || candidatePv[0];
-    
-    const atlas1211 = path.join(pvPublic, 'textures/1.21.1.png');
-    const atlas261 = path.join(pvPublic, 'textures/26.1.png');
-    const bs1211 = path.join(pvPublic, 'blocksStates/1.21.1.json');
-    const bs261 = path.join(pvPublic, 'blocksStates/26.1.json');
 
-    assert.ok(fs.existsSync(atlas1211), '1.21.1.png atlas must exist');
-    assert.ok(fs.existsSync(atlas261), '26.1.png atlas must exist');
-    assert.ok(fs.existsSync(bs1211), '1.21.1.json block states must exist');
-    assert.ok(fs.existsSync(bs261), '26.1.json block states must exist');
+    // The viewer renders with the version blockstates.js resolves, not with the
+    // bot's own protocol version ('26.1'), which prismarine-viewer cannot render.
+    const { resolveRenderVersion } = require('../mineflayer-wynn/src/blockstates');
+    const renderVersion = resolveRenderVersion('26.1');
+    assert.ok(renderVersion, 'A renderable Minecraft version must resolve');
 
-    const stat = fs.statSync(atlas1211);
+    const atlasPath = path.join(pvPublic, `textures/${renderVersion}.png`);
+    const statesPath = path.join(pvPublic, `blocksStates/${renderVersion}.json`);
+    assert.ok(fs.existsSync(atlasPath), `${renderVersion}.png atlas must exist`);
+    assert.ok(fs.existsSync(statesPath), `${renderVersion}.json block states must exist`);
+
+    const stat = fs.statSync(atlasPath);
     assert.ok(stat.size > 100000, `Atlas should be substantial image (>100KB), got ${stat.size} bytes`);
 
-    const statesData = JSON.parse(fs.readFileSync(bs1211, 'utf8'));
+    // PNG IHDR: width is a big-endian uint32 at byte offset 16.
+    const header = Buffer.alloc(24);
+    const fd = fs.openSync(atlasPath, 'r');
+    fs.readSync(fd, header, 0, 24, 0);
+    fs.closeSync(fd);
+    const atlasWidth = header.readUInt32BE(16);
+    const tilesPerRow = atlasWidth / 16;
+    assert.ok(Number.isInteger(tilesPerRow), `Atlas width ${atlasWidth} must be a whole number of 16px tiles`);
+
+    const statesData = JSON.parse(fs.readFileSync(statesPath, 'utf8'));
     assert.ok(statesData.stone, 'Stone block state must exist');
     const stoneTex = statesData.stone.variants[''][0].model.textures.particle;
-    assert.strictEqual(stoneTex.su, 0.03125, 'Tile size ratio must be 1/32 (0.03125)');
-    assert.strictEqual(stoneTex.sv, 0.03125, 'Tile size ratio must be 1/32 (0.03125)');
+    assert.strictEqual(stoneTex.su, 1 / tilesPerRow, `Tile ratio must be 1/${tilesPerRow} for a ${atlasWidth}px atlas`);
+    assert.strictEqual(stoneTex.sv, 1 / tilesPerRow, `Tile ratio must be 1/${tilesPerRow} for a ${atlasWidth}px atlas`);
+
+    // apply_wynn_textures.py keeps a pristine copy; when it has run, the atlas must
+    // carry the Wynncraft art and keep the vanilla geometry the UVs depend on.
+    const vanillaPath = path.join(pvPublic, `textures/${renderVersion}.vanilla.png`);
+    if (fs.existsSync(vanillaPath)) {
+      const vanillaHeader = Buffer.alloc(24);
+      const vfd = fs.openSync(vanillaPath, 'r');
+      fs.readSync(vfd, vanillaHeader, 0, 24, 0);
+      fs.closeSync(vfd);
+      assert.strictEqual(vanillaHeader.readUInt32BE(16), atlasWidth, 'Patched atlas must keep the vanilla atlas width');
+      assert.strictEqual(vanillaHeader.readUInt32BE(20), header.readUInt32BE(20), 'Patched atlas must keep the vanilla atlas height');
+      assert.notStrictEqual(
+        fs.readFileSync(atlasPath).toString('base64'),
+        fs.readFileSync(vanillaPath).toString('base64'),
+        'Atlas should differ from vanilla once the Wynncraft pack is applied'
+      );
+    }
   });
 
   // 25. macOS Portability: Prism Directory Resolution
