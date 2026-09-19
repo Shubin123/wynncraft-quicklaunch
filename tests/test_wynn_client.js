@@ -127,6 +127,16 @@ test('Pages accept an incoming selection and pass one on', () => {
   }
 });
 
+test('The cross-link strip is mounted from one shared helper', () => {
+  assert.strictEqual(typeof client.crossLinks, 'function');
+  for (const page of ['index.html', 'predict.html']) {
+    const html = fs.readFileSync(path.join(DASHBOARD, page), 'utf8');
+    assert.ok(html.includes('WynnClient.mountCrossLinks'), `${page} should use the shared helper`);
+    assert.ok(!/function renderCrossLinks/.test(html),
+      `${page} still defines its own copy of the cross-link mounting`);
+  }
+});
+
 test('The duplicated formatters are gone from the pages', () => {
   for (const page of ['market.html', 'liquidity.html']) {
     const html = fs.readFileSync(path.join(DASHBOARD, page), 'utf8');

@@ -243,7 +243,10 @@
     `).join('');
   }
 
+  let latestPlan = null;
+
   function renderPlan(plan) {
+    latestPlan = plan;
     const legs = plan.legs || [];
     const deployedShare = plan.capital > 0 ? plan.capital_deployed / plan.capital : 0;
     $('totals').innerHTML = `
@@ -340,8 +343,10 @@
     );
     if (!ok) return;
     log(`Buying ${item} at ${formatEmeralds(price)}…`);
+    // expectItem: the slot may hold something else by now, and the server
+    // refuses rather than buying whatever happens to be cheap there.
     const { body } = await WynnClient.post('/api/bot/market/buy', {
-      slot, confirm: true, maxPrice: price
+      slot, confirm: true, maxPrice: price, expectItem: item
     });
     log(body.ok ? `Bought ${item}.` : `Buy failed: ${body.error}`);
   }
@@ -351,7 +356,12 @@
     if (button) buyLeg(button);
   });
 
-  WynnClient.subscribe((state) => { sharedState = state; });
+  WynnClient.subscribe((state) => {
+    sharedState = state;
+    // Re-render the plan so its buy buttons track the live market instead of
+    // the slots that were current when the plan was built.
+    if (latestPlan) renderPlan(latestPlan);
+  });
 
   // An item or basket handed over from another page.
   const incoming = WynnClient.getSelection();

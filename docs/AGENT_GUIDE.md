@@ -522,10 +522,10 @@ curl -s -X POST http://localhost:8123/api/bot/connect \
 
 ### Recipe C: Navigate to Detlas Trade Market
 ```bash
-# Detlas Market coordinates: 528, 68, -1600
+# Detlas Market coordinates: 500, 68, -1578
 curl -s -X POST http://localhost:8123/api/bot/goto \
   -H "Content-Type: application/json" \
-  -d '{"x": 528, "y": 68, "z": -1600}'
+  -d '{"x": 500, "y": 68, "z": -1578}'
 ```
 
 ### Recipe D: Query Item Price Before Trading

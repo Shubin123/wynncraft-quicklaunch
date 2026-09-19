@@ -162,6 +162,27 @@ function fakeBot(window) {
     assert.strictEqual(bot.clicks[0].slot, 10);
   });
 
+  await test('A buy names the item it means, and is refused if the slot moved', async () => {
+    // The slot a listing sat in when a plan was built is not an identity:
+    // pages turn and other players buy, so the same index can hold anything.
+    const window = marketWindow({
+      10: pane('bow', 'Spring', ['Legendary Item', 'Price: 3 le', 'Amount: 1'])
+    });
+    const bot = fakeBot(window);
+    const market = attachMarket(bot);
+
+    const moved = await market.buy({ slot: 10 }, {
+      confirm: true, expectItem: 'Boreal-Patterned Aegis', settleMs: 0
+    });
+    assert.strictEqual(moved.ok, false);
+    assert.ok(/now holds "Spring"/.test(moved.error), moved.error);
+    assert.strictEqual(bot.clicks.length, 0, 'a mismatched slot must not be clicked at all');
+
+    const right = await market.buy({ slot: 10 }, { confirm: true, expectItem: 'spring', settleMs: 0 });
+    assert.ok(right.ok, `matching names should buy: ${right.error}`);
+    assert.strictEqual(bot.clicks[0].slot, 10);
+  });
+
   await test('Search clicks the search pane and answers the chat prompt', async () => {
     const window = marketWindow({ 47: pane('compass', 'Search Items', []) });
     const bot = fakeBot(window);

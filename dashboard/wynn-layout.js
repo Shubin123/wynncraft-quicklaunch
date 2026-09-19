@@ -219,6 +219,8 @@
     }
 
     let dragged = null;
+    // Set by whichever panel is currently being dragged.
+    let abortDrag = null;
 
     function clearDropMarks() {
       for (const panel of container.querySelectorAll('.panel-wrap')) {
@@ -316,9 +318,8 @@
       handle.addEventListener('pointerup', () => finish(true));
       handle.addEventListener('pointercancel', () => finish(false));
       handle.addEventListener('lostpointercapture', () => { if (dragged) finish(true); });
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && dragged) finish(false);
-      });
+      // Escape is handled once for the page, below, rather than per panel.
+      abortDrag = () => finish(false);
     }
 
     // Controls: how dense the columns are, and a way back to the default.
@@ -335,6 +336,10 @@
     const density = bar.querySelector('#wynn-density');
 
     for (const panel of panels) wirePanel(panel);
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && dragged && abortDrag) abortDrag();
+    });
 
     load();
     density.value = String(state.minPanel);

@@ -151,6 +151,19 @@ test('Installation can be switched off', () => {
   }
 });
 
+test('The postMessage bridge is pinned to the embedding origin', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/viewer-overlay.js'), 'utf8');
+  assert.ok(source.includes('isTrustedOrigin'), 'inbound messages must be origin-checked');
+  assert.ok(!/postMessage\([^)]*,\s*'\*'\)/.test(source),
+    'state must be posted to the embedding origin, not to any listener');
+
+  const dashboard = fs.readFileSync(path.resolve(__dirname, '../../dashboard/bot.html'), 'utf8');
+  assert.ok(dashboard.includes('event.origin !== expected'),
+    'the dashboard must check where a viewer state message came from');
+  assert.ok(!/postMessage\(\{ type: 'wynn:viewer:track'[^)]*'\*'\)/.test(dashboard),
+    'the dashboard must target the viewer origin rather than any window');
+});
+
 test('The overlay loads in Node without a DOM', () => {
   assert.strictEqual(typeof overlay.nextCameraFrame, 'function');
   assert.strictEqual(typeof overlay.setTracking, 'undefined', 'browser-only API must not leak into Node');

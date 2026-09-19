@@ -199,22 +199,28 @@ def record_snapshot(item: str, price_body: dict):
             f.write(json.dumps(row) + "\n")
 
 
-def read_history(item: str, days: float = 30) -> list[dict]:
+def read_history_rows() -> list[dict]:
+    """Every recorded snapshot, parsed. The one place that reads the log."""
     if not HISTORY_FILE.exists():
         return []
-    cutoff = time.time() - days * 86400
-    item_lower = item.lower()
-    points = []
     with _history_lock:
-        with HISTORY_FILE.open() as f:
-            lines = f.readlines()
+        lines = HISTORY_FILE.read_text().splitlines()
+    rows = []
     for line in lines:
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if row.get("item") == item_lower and row.get("ts", 0) >= cutoff:
-            points.append(row)
+        if "item" in row:
+            rows.append(row)
+    return rows
+
+
+def read_history(item: str, days: float = 30) -> list[dict]:
+    cutoff = time.time() - days * 86400
+    item_lower = item.lower()
+    points = [row for row in read_history_rows()
+              if row.get("item") == item_lower and row.get("ts", 0) >= cutoff]
     points.sort(key=lambda r: r["ts"])
     return points
 
@@ -567,26 +573,9 @@ def build_state() -> dict:
         },
         "prices": {
             "watchlist": watchlist,
-            "historyItems": sorted({row["item"] for row in read_all_history()}),
+            "historyItems": sorted({row["item"] for row in read_history_rows()}),
         },
     }
-
-
-def read_all_history() -> list[dict]:
-    """Every recorded snapshot, used only for listing which items we know."""
-    if not HISTORY_FILE.exists():
-        return []
-    rows = []
-    with _history_lock:
-        lines = HISTORY_FILE.read_text().splitlines()
-    for line in lines:
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if "item" in row:
-            rows.append(row)
-    return rows
 
 
 def build_deltas(items: list[str], use_live: bool = True, days: float = 30,

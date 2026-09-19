@@ -180,17 +180,8 @@
   }
   WynnClient.subscribe((state) => { sharedState = state; });
 
-  // Links onward stay visible whether or not the lookup itself succeeds.
-  const xlinks = document.createElement("div");
-  xlinks.style.marginTop = "8px";
-  lookupStatus.after(xlinks);
-  function renderCrossLinks() {
-    const item = qInput.value.trim();
-    xlinks.innerHTML = item
-      ? `Open elsewhere: ${WynnClient.crossLinks(item, { exclude: ["price"] })}`
-      : "";
-  }
-  qInput.addEventListener("input", renderCrossLinks);
+  // Links onward to the other pages, from the shared client.
+  const renderCrossLinks = WynnClient.mountCrossLinks(qInput, document.getElementById("lookup-status"), { exclude: ["price"] });
 
   // An item handed over from another page opens straight into its price.
   const incoming = WynnClient.getSelection();

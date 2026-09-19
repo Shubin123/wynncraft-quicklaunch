@@ -247,8 +247,14 @@ function setAccountLock(identifier) {
 
   const lock = { uuid: account.uuid, name: account.name, lockedAt: new Date().toISOString() };
   const file = getAccountLockFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(lock, null, 2));
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(lock, null, 2));
+  } catch (err) {
+    // A read-only or unwritable config directory is a reportable condition,
+    // not something that should escape into the HTTP handler.
+    return { ok: false, error: `Could not write the account lock to ${file}: ${err.message}` };
+  }
   return { ok: true, lock, account };
 }
 
@@ -257,7 +263,11 @@ function setAccountLock(identifier) {
  */
 function clearAccountLock() {
   const file = getAccountLockFile();
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  try {
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch (err) {
+    return { ok: false, error: `Could not remove the account lock at ${file}: ${err.message}` };
+  }
   return { ok: true, lock: null };
 }
 

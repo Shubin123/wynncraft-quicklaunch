@@ -315,16 +315,8 @@
     qInput.value = incoming.item;
     analyze();
   }
-  const xlinks = document.createElement("div");
-  xlinks.style.marginTop = "8px";
-  document.getElementById("status").after(xlinks);
-  function renderCrossLinks() {
-    const item = qInput.value.trim();
-    xlinks.innerHTML = item
-      ? `Open elsewhere: ${WynnClient.crossLinks(item, { exclude: ["trend"] })}`
-      : "";
-  }
-  qInput.addEventListener("input", renderCrossLinks);
+  // Links onward to the other pages, from the shared client.
+  const renderCrossLinks = WynnClient.mountCrossLinks(qInput, document.getElementById("status"), { exclude: ["trend"] });
   renderCrossLinks();
 </script>
 </body>

@@ -458,6 +458,23 @@ function attachMarket(bot, options = {}) {
     if (!opts.confirm) {
       return { ok: false, needsConfirm: true, pane, error: 'Buying requires confirm: true' };
     }
+    // A slot index is not an identity. Listings move as pages turn, other
+    // players buy, and searches rerun, so a caller that knows what it meant to
+    // buy says so and the purchase is refused if the slot now holds something
+    // else - a price ceiling alone cannot tell a cheap right item from a cheap
+    // wrong one.
+    if (opts.expectItem) {
+      const wanted = String(opts.expectItem).trim().toLowerCase();
+      const actual = String(pane.customName || pane.name || '').trim().toLowerCase();
+      if (wanted !== actual) {
+        return {
+          ok: false,
+          pane,
+          error: `Slot ${pane.slot} now holds "${pane.customName || pane.name}", not "${opts.expectItem}"; ` +
+            'the market moved since this was planned'
+        };
+      }
+    }
     if (typeof opts.maxPrice === 'number' && pane.price !== null && pane.price > opts.maxPrice) {
       return {
         ok: false,

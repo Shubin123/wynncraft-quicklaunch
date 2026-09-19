@@ -74,6 +74,10 @@ const { ChatInsightsEngine } = require('./chat_insights');
 const { goals } = require('mineflayer-pathfinder');
 
 const PORT = parseInt(process.env.WYNN_BOT_PORT || '8124', 10);
+// Loopback by default: this API has no authentication and can move the bot,
+// spend emeralds and change which account it logs in as. The dashboard it
+// serves is localhost-only too. Set WYNN_BOT_HOST to expose it deliberately.
+const HOST = process.env.WYNN_BOT_HOST || '127.0.0.1';
 const VIEWER_PORT = parseInt(process.env.WYNN_VIEWER_PORT || '3000', 10);
 
 // Presets for Wynncraft Cities / POIs
@@ -1447,7 +1451,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('[WynnBot Server] Unhandled rejection:', reason?.message || reason);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`\x1b[36m[WynnBot Server]\x1b[0m API running on http://localhost:${PORT}`);
 });
 

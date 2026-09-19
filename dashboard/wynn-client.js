@@ -279,9 +279,28 @@
     };
   }
 
+  /**
+   * Mounts the "open elsewhere" links under an input, kept in step with what
+   * is typed. Both single-item pages need exactly this, so it lives here.
+   */
+  function mountCrossLinks(input, anchor, { exclude = [], label = 'Open elsewhere:' } = {}) {
+    if (!input || !anchor) return () => {};
+    const node = document.createElement('div');
+    node.style.marginTop = '8px';
+    anchor.after(node);
+    const render = () => {
+      const item = input.value.trim();
+      node.innerHTML = item ? `${label} ${crossLinks(item, { exclude })}` : '';
+    };
+    input.addEventListener('input', render);
+    render();
+    return render;
+  }
+
   global.WynnClient = Object.assign({}, helpers, {
     get,
     post,
+    mountCrossLinks,
     state,
     subscribe,
     getSelection,

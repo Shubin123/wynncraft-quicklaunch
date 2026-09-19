@@ -184,6 +184,24 @@ test('A corrupt lock file is ignored rather than fatal', () => {
   });
 });
 
+test('An unwritable lock location is reported, not thrown', () => {
+  withSandbox([account('Alice', ALICE, true), account('Bob', BOB, false)], ({ prism, dir }) => {
+    // A path whose parent is a file cannot be created: stands in for a
+    // read-only or otherwise unwritable config directory.
+    const blocker = path.join(dir, 'blocker');
+    fs.writeFileSync(blocker, 'not a directory');
+    process.env.WYNN_BOT_ACCOUNT_FILE = path.join(blocker, 'bot-account.json');
+
+    let result;
+    assert.doesNotThrow(() => { result = prism.setAccountLock('Alice'); },
+      'a filesystem error must not escape into the caller');
+    assert.strictEqual(result.ok, false);
+    assert.match(result.error, /Could not write the account lock/);
+
+    assert.doesNotThrow(() => prism.clearAccountLock(), 'nor when clearing it');
+  });
+});
+
 test('WYNN_BOT_ACCOUNT overrides the saved lock for one run', () => {
   withSandbox([account('Alice', ALICE, true), account('Bob', BOB, false)], ({ prism }) => {
     prism.setAccountLock('Alice');
@@ -221,6 +239,18 @@ test('An expired session on the locked account is flagged, not hidden', () => {
     assert.strictEqual(selection.account.name, 'Bob', 'still the chosen account');
     assert.strictEqual(selection.account.isTokenValid, false);
     assert.ok(selection.warnings.some(w => /expired session/i.test(w)), selection.warnings);
+  });
+});
+
+test('A --account that matches nothing stops instead of connecting offline', () => {
+  withSandbox([account('Alice', ALICE, true), account('Bob', BOB, false)], ({ dir }) => {
+    delete require.cache[require.resolve('../src/bot')];
+    const { createWynnBot } = require('../src/bot');
+    assert.throws(
+      () => createWynnBot({ account: 'Carol', auth: 'prism' }),
+      /No Prism account matches "Carol"\. Available: Alice, Bob/,
+      'a typo must fail loudly, not log in offline as the default username'
+    );
   });
 });
 

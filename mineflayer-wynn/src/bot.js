@@ -48,6 +48,13 @@ function createWynnBot(userOptions = {}) {
     for (const warning of selection.warnings) {
       console.warn(`\x1b[33m[Prism Link]\x1b[0m ${warning}`);
     }
+    if (selection.source === 'option' && !selection.account) {
+      // An explicitly named account that does not exist is a mistake worth
+      // stopping for: falling through would connect offline as "WynnBot" and
+      // fail much later, far from the typo that caused it.
+      const names = prism.getPrismAccounts().map(a => a.name).join(', ');
+      throw new Error(`No Prism account matches "${userOptions.account}". Available: ${names || 'none'}`);
+    }
     const sourceLabel = {
       option: 'pinned by --account',
       env: 'pinned by WYNN_BOT_ACCOUNT',

@@ -1253,10 +1253,19 @@
     renderViewerTrackButton();
     // The viewer runs on its own port, so the overlay inside it is only
     // reachable by postMessage; it echoes its real state back below.
-    viewerFrame.contentWindow.postMessage({ type: 'wynn:viewer:track', enabled: viewerTracking }, '*');
+    const viewerOrigin = (() => {
+      try { return new URL(viewerFrame.src, location.href).origin; } catch (e) { return null; }
+    })();
+    if (!viewerOrigin) return;
+    viewerFrame.contentWindow.postMessage({ type: 'wynn:viewer:track', enabled: viewerTracking }, viewerOrigin);
   }
 
   window.addEventListener('message', (event) => {
+    // Only the viewer we embedded may report its state.
+    const expected = (() => {
+      try { return new URL(viewerFrame.src, location.href).origin; } catch (e) { return null; }
+    })();
+    if (!expected || event.origin !== expected) return;
     const data = event.data;
     if (!data || data.type !== 'wynn:viewer:state') return;
     viewerTracking = !!data.tracking;

@@ -80,6 +80,23 @@
   }
 
   /**
+   * The dashboard that embeds this page. Messages from anywhere else are
+   * ignored, and state is only reported back there.
+   */
+  function parentOrigin() {
+    return (typeof global !== 'undefined' && global.WYNN_DASHBOARD_ORIGIN) ||
+      (typeof document !== 'undefined' && document.referrer
+        ? (() => { try { return new URL(document.referrer).origin; } catch (err) { return null; } })()
+        : null);
+  }
+
+  function isTrustedOrigin(origin) {
+    const expected = parentOrigin();
+    if (!expected) return false;
+    return origin === expected;
+  }
+
+  /**
    * Recognises the parent dashboard's toggle messages. Anything else on the
    * message channel is ignored - the page sits in an iframe on a different
    * origin and will see unrelated traffic.
@@ -222,8 +239,9 @@
     if (state.tracking && state.bot) state.smoothed = { ...state.bot };
     render();
     // Keep the dashboard's own button in step with this one.
-    if (global.parent && global.parent !== global) {
-      global.parent.postMessage({ type: 'wynn:viewer:state', tracking: state.tracking }, '*');
+    const expected = parentOrigin();
+    if (global.parent && global.parent !== global && expected) {
+      global.parent.postMessage({ type: 'wynn:viewer:state', tracking: state.tracking }, expected);
     }
   }
 
@@ -266,6 +284,8 @@
     document.body.appendChild(bar);
 
     global.addEventListener('message', (event) => {
+      // Only the page that embedded this viewer may drive it.
+      if (!isTrustedOrigin(event.origin)) return;
       const command = trackCommand(event.data);
       if (command) setTracking(command.enabled);
     });

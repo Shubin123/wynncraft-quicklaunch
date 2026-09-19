@@ -375,6 +375,16 @@ test('A corrupt or unavailable store falls back to the default layout', () => {
   assert.strictEqual(sandbox.wynnLayout.state().order[0], 'pw-telemetry');
 });
 
+test('Escape is handled once for the page, not once per panel', () => {
+  const module = fs.readFileSync(path.join(DASHBOARD, 'wynn-layout.js'), 'utf8');
+  const listeners = (module.match(/document\.addEventListener\('keydown'/g) || []).length;
+  assert.strictEqual(listeners, 1,
+    'a per-panel keydown listener runs N times for every keystroke on the page');
+  const wireBody = module.slice(module.indexOf('function wirePanel'), module.indexOf('// Controls: how dense'));
+  assert.ok(!wireBody.includes("document.addEventListener('keydown'"),
+    'the page-level handler must live outside wirePanel');
+});
+
 test('bot.html is wired to the layout module', () => {
   const html = fs.readFileSync(path.join(DASHBOARD, 'bot.html'), 'utf8');
   assert.ok(html.includes('<script src="wynn-layout.js"></script>'), 'the module is loaded');

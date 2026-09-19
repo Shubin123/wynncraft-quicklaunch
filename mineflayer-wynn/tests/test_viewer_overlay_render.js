@@ -135,6 +135,7 @@ function boot({ position = { x: 0, y: 64, z: 0 }, ok = true } = {}) {
     body,
     createElement: makeNode,
     currentScript: { src: 'http://localhost:3000/wynn-viewer-overlay.js?api=http%3A%2F%2Flocalhost%3A8124' },
+    referrer: 'http://localhost:8123/bot.html',
     events: {},
     addEventListener: (type, handler) => { (document.events[type] = document.events[type] || []).push(handler); }
   };
@@ -159,7 +160,8 @@ function boot({ position = { x: 0, y: 64, z: 0 }, ok = true } = {}) {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
-  sandbox.parent = { postMessage: (message) => posted.push(message) };
+  sandbox.URL = URL;
+  sandbox.parent = { postMessage: (message, origin) => posted.push({ message, origin }) };
 
   vm.runInNewContext(SOURCE, sandbox, { filename: 'viewer-overlay.js' });
 
@@ -286,24 +288,38 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   await test('The dashboard can toggle it by postMessage, and is told the result', async () => {
     const { sandbox, api, posted, button } = boot();
     await flush();
-
-    // Messages cross a VM realm boundary, so compare values, not prototypes.
+    const DASHBOARD = 'http://localhost:8123';
     const lastPost = () => JSON.parse(JSON.stringify(posted[posted.length - 1]));
 
-    sandbox.dispatch('message', { data: { type: 'wynn:viewer:track', enabled: true } });
+    sandbox.dispatch('message', { origin: DASHBOARD, data: { type: 'wynn:viewer:track', enabled: true } });
     assert.strictEqual(api.isTracking(), true);
-    assert.deepStrictEqual(lastPost(), { type: 'wynn:viewer:state', tracking: true });
+    assert.deepStrictEqual(lastPost(),
+      { message: { type: 'wynn:viewer:state', tracking: true }, origin: DASHBOARD },
+      'state goes back to the embedding page, not to any listener');
     assert.match(button.textContent, /Tracking/);
 
-    sandbox.dispatch('message', { data: { type: 'wynn:viewer:track', enabled: false } });
+    sandbox.dispatch('message', { origin: DASHBOARD, data: { type: 'wynn:viewer:track', enabled: false } });
     assert.strictEqual(api.isTracking(), false);
-    assert.deepStrictEqual(lastPost(), { type: 'wynn:viewer:state', tracking: false });
 
     const count = posted.length;
-    sandbox.dispatch('message', { data: { type: 'webpackHotUpdate' } });
-    sandbox.dispatch('message', { data: 'a string from some other page' });
+    sandbox.dispatch('message', { origin: DASHBOARD, data: { type: 'webpackHotUpdate' } });
+    sandbox.dispatch('message', { origin: DASHBOARD, data: 'a string from some other page' });
     assert.strictEqual(api.isTracking(), false, 'unrelated messages must be ignored');
     assert.strictEqual(posted.length, count, 'and must not chatter back at the parent');
+  });
+
+  await test('A toggle from another origin is ignored', async () => {
+    const { sandbox, api } = boot();
+    await flush();
+
+    sandbox.dispatch('message', {
+      origin: 'http://evil.example', data: { type: 'wynn:viewer:track', enabled: true }
+    });
+    assert.strictEqual(api.isTracking(), false,
+      'only the page that embedded the viewer may drive its camera');
+
+    sandbox.dispatch('message', { data: { type: 'wynn:viewer:track', enabled: true } });
+    assert.strictEqual(api.isTracking(), false, 'a message with no origin is not trusted either');
   });
 
   await test('The button polls the bot position and reports when it is unavailable', async () => {
