@@ -8,7 +8,9 @@ implied.
 One rule shapes everything below: **the write path cannot be exercised against
 Wynncraft.** A buy spends emeralds irreversibly, and automated trading there is
 at best a rules question. So every test that issues a command runs against a
-stand-in, and the live server is only ever read from, by hand.
+stand-in, or against the offline server in Layer 4 — a real protocol, on
+localhost, that nobody's emeralds depend on. The live server is only ever read
+from, by hand.
 
 ---
 
@@ -94,9 +96,69 @@ survives a restart (`test_trade_journal.js`), and a trade interrupted between
 the two stays visible as unresolved rather than being assumed either way -
 `GET /api/bot/trades/pending` lists them.
 
+Those are now settled without anyone looking in the game. `reconcileIntent()`
+reads the emerald balance against the one recorded before the click and
+concludes in exactly two cases - the balance fell by what the listing asked, or
+it did not move at all. Everything else stays pending. The tests are mostly
+about what it refuses to conclude: a balance that moved by some other amount, an
+intent too old for a balance to witness, and more than one intent outstanding
+against a single balance, which cannot say which of them moved it. Holding the
+item can veto a conclusion but never reach one, since the bot may have owned one
+already.
+
 ---
 
-## Layer 4 — Properties, fuzz, chaos
+## Layer 4 — The wire
+
+`tests/test_protocol_harness.js`, against `tests/harness/wynn_server.js`: a real
+`minecraft-protocol` server on localhost, and a real mineflayer bot joined to it
+at **26.1** — the version `bot.js` negotiates with `play.wynncraft.com`. The
+market is served as real packets, and the server owns its state: a click arrives
+as `window_click`, and it is the server that removes the listing and debits the
+purse.
+
+Everything under the parser is real here — the socket, the packet schema,
+prismarine-item, prismarine-windows, `bot.currentWindow`, `bot.clickWindow`, the
+Wynncraft plugin. That is the point. The stand-ins in Layers 1–3 are written by
+the same hand as the code they feed, so they agree with it by construction.
+
+| Concern | What it proves |
+|---|---|
+| Container shape | a six-row window parses as 54 container slots, listings, controls and filler told apart |
+| **Wire encoding** | `customName` arrives as a *component*, not a string, and the market code reads through it |
+| Emeralds | counted off a real inventory, liquid emeralds included — those are an ordinary item wearing a custom name |
+| Buy | the purchase leaves as one `window_click`, with the expected window, slot, button and mode |
+| Effect | the server removes the listing and debits the purse, and the bot sees both |
+| Reconciliation | `emeralds_before`/`emeralds_after` come from a balance the game reported, so `reconciled` means something |
+| Idempotency | a retry puts no second packet on the wire, and spends nothing |
+| **Reconciliation after a crash** | a session dies between the intent and the outcome; the next one settles it against the balance the server reports, and a retry of the settled intent buys nothing |
+| Reconciliation, the other way | a session that died *before* the click leaves the balance untouched, which settles it as never executed - and does not stand in the way of doing it |
+| Refusal | unconfirmed, over-ceiling and wrong-item buys send no packet at all |
+| Page turn | a control click is a real packet, and the next page is a real window |
+| Title guard | a window that is not the market is not treated as one |
+
+**It paid on the first run.** `countEmeralds()` read
+`stripFormatting(item.customName)`, and since 1.20.5 a custom name travels as a
+data component carrying an NBT text component, not a string. `stripFormatting`
+returns `''` for anything that is not a string, so every liquid emerald — 4096
+emeralds each — counted as none: a purse of 3 le read as 0. Nothing failed,
+anywhere, because every stand-in in this repo hands over a string. The same
+assumption was live in two other places (`repl.js`, and the inventory pane in
+`wynn_bot_server.js`); all three read `extractCleanText` now, which takes both
+shapes.
+
+That is the argument for this layer in one line. The bug sat on the money path —
+it fed `emeralds_before`/`emeralds_after`, and so every reconciliation — and it
+was invisible to every test that did not have a socket in it.
+
+**What it is not.** The harness serves what the market code reads: a titled
+container of named, lored items, and enough of a join sequence to spawn. It is
+not a Wynncraft emulator — no lobby, no character selection, no world gates, and
+the plugin's login automation is switched off for it.
+
+---
+
+## Layer 5 — Properties, fuzz, chaos
 
 **Property-based** (`test_translation_properties.js`, seeded so failures
 reproduce): emerald formatting round-trips over thousands of values; formatting
@@ -132,9 +194,12 @@ server, not throughput.
 ```
 tests/
   contracts/market_listing.v1.json   both languages read this
+  harness/wynn_server.js             a real server, offline, on localhost
   test_bridge_contract.{js,py}       one seam, two sides
   test_trade_journal.js              intents on disk: restart, disconnect
   test_round_trip.js                 the cycle, against a stand-in game
+  test_protocol_harness.js           the cycle, over the real protocol
+  test_trades_api.js                 the trade record over HTTP, own server
   test_translation_properties.js     properties and fuzz
   test_market_log.py                 recorder and derivations
   test_trade_engine.py               decision layer, no I/O
@@ -153,21 +218,37 @@ Conventions that keep it maintainable:
 - **Time and randomness are injected.** `now=` parameters and seeded RNGs, so
   nothing depends on the wall clock or luck.
 - **Stand-ins mirror the real shape.** When a stub diverges from reality the
-  test passes while the code is broken — that happened twice here, with a
-  three r128 stub using prototype methods the real library defines as own
-  properties, and with drag tests that dispatched events straight at elements
-  and skipped hit-testing. Both now model the real thing.
+  test passes while the code is broken. Three times here: a three r128 stub
+  using prototype methods the real library defines as own properties; drag
+  tests that dispatched events straight at elements and skipped hit-testing;
+  and market stand-ins handing over `customName` as a string, which the wire
+  has not done since 1.20.5. All three now model the real thing — the last one
+  only because Layer 4 put a socket in the way.
 - **The suite refuses to act on a live bot.** The end-to-end tests detect a
   connected bot and skip the ones that would chat, walk or click in game.
 
 ## Gaps, in the order worth closing
 
-1. **An offline server harness** — `flying-squid` / `prismarine-server` on
-   localhost would exercise the real protocol and real mineflayer rather than a
-   stand-in bot. The stand-in covers logic; it cannot catch a protocol change.
-2. **Automatic reconciliation** — pending intents are listed but resolving one
-   still means looking in the game. Comparing the emerald balance and the
-   board against the intent could settle most of them.
-3. **Load** — only once there is a reason to believe frequency matters.
+1. **The login flow against a real server** — the harness spawns the bot
+   straight into a world. Wynncraft does not: there is a lobby, a character
+   selection chest and a world gate between login and play, and `wynncraft.js`
+   automates all three against windows nothing tests over a socket. It is the
+   same class of assumption the emerald bug was.
+2. **A hung click** — latency is tested, a click that never comes back is not.
+3. **Multi-unit pricing** — the buy path and reconciliation both read a
+   listing's price as per unit and multiply by `units`, which is unverified for
+   a stack; `classifySlot()` parses a separate `unitPrice` only when the lore
+   says "each". A multi-unit trade therefore fails to reconcile and stays
+   pending. That is the safe direction, but it is an unanswered question, not a
+   decision — see the open questions in the data dictionary.
+4. **Load** — only once there is a reason to believe frequency matters.
 
-*Closed:* persistent intents and disconnect-mid-trade, by the trade journal.
+*Closed:* persistent intents and disconnect-mid-trade, by the trade journal;
+the offline server harness, by Layer 4; automatic reconciliation, by
+`reconcileIntent()` and `POST /api/bot/trades/reconcile`.
+
+One thing reconciliation deliberately does not do is run itself. It writes to
+the trade record, and doing that unprompted on every reconnect would put
+inferred outcomes into a journal whose value is that it says what is known. It
+is a call the operator makes; what has been removed is the need to go and look
+in the game to answer it.

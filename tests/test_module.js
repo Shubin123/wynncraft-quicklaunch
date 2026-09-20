@@ -131,17 +131,24 @@ async function runAll() {
       items: () => [
         { name: 'emerald', count: 35 },
         { name: 'emerald_block', count: 5 },
-        { name: 'emerald', customName: '§aLiquid Emerald', count: 2 }
+        // A custom name is a plain string before 1.20.5 and a text component
+        // after it, and a real bot on Wynncraft only ever sees the second.
+        // Both shapes are held here because a test that knew only the first
+        // is what let liquid emeralds go uncounted for a while - see
+        // tests/test_protocol_harness.js, which found it against a real server.
+        { name: 'emerald', customName: '§aLiquid Emerald', count: 2 },
+        { name: 'emerald', count: 1,
+          customName: { type: 'compound', value: { text: { type: 'string', value: '§aLiquid Emerald' } } } }
       ]
     };
     const { wynncraftPlugin } = mf;
     wynncraftPlugin(bot, {});
     const res = bot.wynn.countEmeralds();
-    assert.strictEqual(res.total, 8547);
-    assert.strictEqual(res.le, 2);
+    assert.strictEqual(res.total, 12643);
+    assert.strictEqual(res.le, 3);
     assert.strictEqual(res.eb, 5);
     assert.strictEqual(res.e, 35);
-    assert.strictEqual(res.formatted, '2 LE, 5 EB, 35 E');
+    assert.strictEqual(res.formatted, '3 LE, 5 EB, 35 E');
   });
 
   // 8. Bot Server Waypoints

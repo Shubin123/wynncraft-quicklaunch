@@ -1,6 +1,6 @@
 const { goals } = require('mineflayer-pathfinder');
 const { extractCleanText } = require('./wynncraft');
-const { createJournal } = require('./journal');
+const { createJournal, reconcileIntent, expectedSpend } = require('./journal');
 
 /**
  * Trade Market (auction house) automation for Wynncraft.
@@ -525,6 +525,10 @@ function attachMarket(bot, options = {}) {
         item: pane.customName || pane.name,
         units: pane.amount || 1,
         limit_price: opts.maxPrice ?? null,
+        // The ceiling is what we refused to exceed; this is what the board
+        // actually asked. Reconciliation needs the second, because "did the
+        // balance fall by the price" has no answer without it.
+        observed_price: pane.price ?? null,
         expected_fair_value: opts.expectedFairValue ?? null,
         slot: pane.slot,
         confirmed_by: opts.confirmedBy || 'human',
@@ -570,6 +574,9 @@ function attachMarket(bot, options = {}) {
       const spent = (emeraldsBefore !== null && emeraldsAfter !== null)
         ? emeraldsBefore - emeraldsAfter
         : null;
+      // The same arithmetic reconciliation uses, from the same place, so the
+      // two can never disagree about what a trade should have cost.
+      const expected = expectedSpend({ observed_price: pane.price, units: pane.amount || 1 });
       market.journal.recordOutcome({
         intent_id: opts.intentId,
         status: 'executed',
@@ -579,7 +586,7 @@ function attachMarket(bot, options = {}) {
         emeralds_before: emeraldsBefore,
         emeralds_after: emeraldsAfter,
         // Did the game agree with what we thought we did?
-        reconciled: spent === null ? null : spent === pane.price * (pane.amount || 1),
+        reconciled: (spent === null || expected === null) ? null : spent === expected,
         error: null
       });
     }
@@ -594,6 +601,72 @@ function attachMarket(bot, options = {}) {
       duplicate: false,
       market: scan
     };
+  };
+
+  /**
+   * Whether the bot is holding something that answers to this item key.
+   *
+   * Weak evidence on purpose: the bot may have owned one before the trade, so
+   * this can only ever stop reconciliation concluding, never make it conclude.
+   */
+  function holdsItem(itemKey) {
+    if (!itemKey) return null;
+    let items;
+    try {
+      items = bot.inventory && bot.inventory.items ? bot.inventory.items() : null;
+    } catch (err) {
+      return null;
+    }
+    if (!items) return null;
+    const needle = String(itemKey).toLowerCase();
+    return items.some((item) => {
+      const custom = extractCleanText(item.customName).toLowerCase();
+      return custom === needle || String(item.name || '').toLowerCase() === needle;
+    });
+  }
+
+  /**
+   * Settles what it can of the trades that were started and never answered.
+   *
+   * These are intents with no outcome: the click went out and the connection
+   * died before the result came back, so the trade may or may not have
+   * happened. Until now the only way to tell was to look in the game. The
+   * emerald balance usually knows - it fell by the asking price, or it never
+   * moved - and this reads it and writes down the answer.
+   *
+   * Anything the evidence cannot settle stays pending. That is the whole
+   * discipline here: a wrong `executed` silently drops a trade the user meant
+   * to make, and a wrong `not_executed` buys the same thing twice.
+   */
+  market.reconcilePending = function (opts = {}) {
+    const pending = market.journal.pending();
+    if (!pending.length) {
+      return { ok: true, checked: 0, settled: [], stillPending: [] };
+    }
+
+    // One balance, read once, for every intent being judged against it.
+    const emeraldsNow = countEmeralds();
+    const settled = [];
+    const stillPending = [];
+
+    for (const intent of pending) {
+      const resolution = reconcileIntent(intent, {
+        emeralds_now: emeraldsNow,
+        item_in_inventory: holdsItem(intent.item_key),
+        pending_count: pending.length,
+        now: opts.now
+      }, opts);
+
+      if (resolution.status === 'unknown') {
+        stillPending.push(resolution);
+        continue;
+      }
+      market.journal.resolve(intent.intent_id, resolution);
+      settled.push(resolution);
+    }
+
+    if (settled.length) bot.emit('market:reconciled', { settled, stillPending });
+    return { ok: true, checked: pending.length, emeralds: emeraldsNow, settled, stillPending };
   };
 
   /**

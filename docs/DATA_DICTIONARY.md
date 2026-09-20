@@ -190,6 +190,7 @@ executor refuses a second execution of an id it has already completed.
 | `item_key`, `item_variant` | string | What was meant — checked against the pane before clicking (`expectItem`) |
 | `units` | int | |
 | `limit_price` | int | Ceiling for a buy, floor for a sell |
+| `observed_price` | int\|null | What the board actually asked, read off the pane before clicking. Distinct from `limit_price`, which is only what we refused to exceed — reconciliation needs the ask, because "did the balance fall by the price" has no answer without it |
 | `expected_fair_value` | int | What the engine thought it was worth |
 | `confirmed_by` | enum | `human` \| `dry_run`. No third value exists today |
 
@@ -199,11 +200,28 @@ executor refuses a second execution of an id it has already completed.
 |---|---|---|
 | `intent_id` | uuid | |
 | `ts` | float | |
-| `status` | enum | `executed` \| `refused_identity` \| `refused_price` \| `refused_unconfirmed` \| `failed` \| `timeout` |
+| `status` | enum | `executed` \| `not_executed` \| `refused_identity` \| `refused_price` \| `refused_unconfirmed` \| `failed` \| `timeout` |
 | `actual_price` | int\|null | |
 | `emeralds_before`, `emeralds_after` | int\|null | Reconciliation: did the balance move by what was expected |
-| `reconciled` | bool\|null | `emeralds_before - emeralds_after == actual_price * units` |
+| `reconciled` | bool\|null | `emeralds_before - emeralds_after == actual_price * units`. Null when there is nothing to reconcile — a trade that never happened has no books to agree |
+| `resolution` | enum\|null | `observed` (the buy path watched it) \| `reconciled` (inferred afterwards from the balance). An inferred outcome must never read as a witnessed one |
+| `reason` | string\|null | Why reconciliation concluded what it did |
+| `age_seconds` | int\|null | How old the intent was when it was settled |
 | `error` | string\|null | |
+
+`not_executed` exists only for reconciliation: it is the answer to "the click may
+never have gone out", and unlike `executed` it does not refuse a later retry —
+a trade that did not happen is one the user may still want to make.
+
+**Settling a pending intent.** An intent with no outcome is a trade whose result
+nobody knows. `reconcileIntent()` in `mineflayer-wynn/src/journal.js` reads the
+emerald balance against `emeralds_before` and concludes only in two cases: the
+balance fell by exactly `observed_price * units` (`executed`), or it did not
+move at all (`not_executed`). Everything else — a different amount, a missing
+balance, an intent older than an hour, or more than one intent outstanding
+against a single balance — stays pending, because a wrong `executed` silently
+drops a trade the user meant to make and a wrong `not_executed` buys the same
+thing twice.
 
 ### 3.9 `decision` — **new**
 
@@ -247,6 +265,7 @@ survives a crash mid-write, no database to run. One reader per file
 | `market_depth`, `listing_lifecycle` | `derive_depth()` / `derive_lifecycles()`, same module | **implemented** |
 | `own_inventory_snapshot` | `wynn.countEmeralds()`, `getInventory()` | available, not persisted |
 | `trade_intent`/`trade_outcome` | `market.buy()` + `/api/bot/market/buy` | guards exist (`confirm`, `maxPrice`, `expectItem`); journal is new |
+| reconciled outcomes | `market.reconcilePending()` + `POST /api/bot/trades/reconcile` | **implemented**; lists what it could not settle |
 | `decision` | `/api/plan`, `wynn_trade_engine.plan_liquidity()` | computed already, not persisted |
 
 ---
@@ -280,3 +299,10 @@ survives a crash mid-write, no database to run. One reader per file
    or is name+tier+shiny enough? Affects how comparable two asks really are.
 3. Retention of `listing_observation` at 90 days — long enough for seasonality,
    short enough to stay small. Adjustable.
+4. Whether a listing's `price` is per unit or for the lot. Both the buy path and
+   reconciliation read it as per unit and multiply by `units`, which is right
+   for the single-unit listings the market mostly shows and unverified for a
+   stack. `classifySlot()` parses a separate `unitPrice` when the lore says
+   "each", so the two disagree for any listing that does not. Until it is
+   settled, a multi-unit trade simply fails to reconcile and stays pending —
+   the safe direction, but a gap rather than an answer.

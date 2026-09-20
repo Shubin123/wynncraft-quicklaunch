@@ -1,5 +1,6 @@
 const readline = require('readline');
 const { goals } = require('mineflayer-pathfinder');
+const { extractCleanText } = require('./wynncraft');
 
 /**
  * Starts an interactive terminal REPL for the Wynncraft bot.
@@ -148,7 +149,7 @@ function startRepl(botContext) {
           const items = bot.inventory?.items() || [];
           safeLog(`\x1b[1mInventory (${items.length} slots used):\x1b[0m`);
           items.forEach(i => {
-            const name = i.customName ? require('./wynncraft').stripFormatting(i.customName) : i.name;
+            const name = extractCleanText(i.customName) || i.name;
             safeLog(`  - ${i.count}x ${name}`);
           });
           const emeralds = bot.wynn.countEmeralds();

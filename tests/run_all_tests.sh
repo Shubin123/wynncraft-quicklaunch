@@ -71,22 +71,28 @@ node "$SCRIPT_DIR/test_round_trip.js"
 # 12. Translation properties and boundary fuzzing
 node "$SCRIPT_DIR/test_translation_properties.js"
 
-# 13. Phase 1 market recorder: schema, dedupe, derived liquidity
+# 13. Protocol harness: a real bot, a real server, the real wire
+node "$SCRIPT_DIR/test_protocol_harness.js"
+
+# 14. Trade record over HTTP: pending intents and reconciliation
+node "$SCRIPT_DIR/test_trades_api.js"
+
+# 15. Phase 1 market recorder: schema, dedupe, derived liquidity
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
 
-# 14. Trade engine: features, neural net, GA, delta pipeline
+# 16. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 15. Trade engine HTTP endpoints (starts a throwaway price server)
+# 17. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 16. Module Tests
+# 18. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 17. Integration Tests
+# 19. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 18. E2E Tests
+# 20. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

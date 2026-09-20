@@ -16,7 +16,7 @@ const EventEmitter = require('events');
 const { Vec3 } = require(require.resolve('vec3', {
   paths: [path.resolve(__dirname, '../mineflayer-wynn')]
 }));
-const { createJournal } = require('../mineflayer-wynn/src/journal.js');
+const { createJournal, reconcileIntent } = require('../mineflayer-wynn/src/journal.js');
 const { attachMarket, formatEmeralds } = require('../mineflayer-wynn/src/market.js');
 
 console.log('Running trade journal tests...');
@@ -249,6 +249,134 @@ function gameWorld({ emeralds = 100000, listings = [], failClick = null } = {}) 
     assert.ok(result.ok, `the purchase should still go through: ${result.error}`);
     assert.strictEqual(state.sold.length, 1);
     assert.ok(market.journal.lastError, 'but the journal failure must be visible');
+  });
+
+  // ---------------------------------------------------------------
+  // Reconciliation: settling an intent nobody watched finish.
+  // ---------------------------------------------------------------
+
+  /** An intent as the buy path writes one, a minute ago. */
+  const orphan = (over = {}) => ({
+    intent_id: 'i-orphan', ts: 1000, side: 'buy', item: 'Spring', item_key: 'spring',
+    units: 1, limit_price: 12000, observed_price: 9000, emeralds_before: 100000, ...over
+  });
+  const AT = { now: 1060 };
+
+  await test('A balance that fell by the asking price settles the intent', async () => {
+    const result = reconcileIntent(orphan(), { emeralds_now: 91000, ...AT });
+    assert.strictEqual(result.status, 'executed');
+    assert.strictEqual(result.expected_price, 9000);
+    assert.strictEqual(result.age_seconds, 60);
+  });
+
+  await test('A balance that never moved settles it the other way', async () => {
+    const result = reconcileIntent(orphan(), { emeralds_now: 100000, ...AT });
+    assert.strictEqual(result.status, 'not_executed');
+  });
+
+  await test('A balance that moved by something else settles nothing', async () => {
+    const result = reconcileIntent(orphan(), { emeralds_now: 95000, ...AT });
+    assert.strictEqual(result.status, 'unknown');
+    assert.ok(/5000/.test(result.reason), result.reason);
+  });
+
+  await test('Multi-unit intents are priced the same way the buy path prices them', async () => {
+    const stack = orphan({ units: 4, observed_price: 500 });
+    assert.strictEqual(reconcileIntent(stack, { emeralds_now: 98000, ...AT }).status, 'executed');
+    assert.strictEqual(reconcileIntent(stack, { emeralds_now: 99500, ...AT }).status, 'unknown',
+      'one unit of a four-unit intent is not that intent');
+  });
+
+  await test('Nothing to compare against leaves the intent pending', async () => {
+    assert.strictEqual(
+      reconcileIntent(orphan({ emeralds_before: null }), { emeralds_now: 91000, ...AT }).status, 'unknown');
+    assert.strictEqual(
+      reconcileIntent(orphan(), { emeralds_now: null, ...AT }).status, 'unknown');
+    assert.strictEqual(
+      reconcileIntent(orphan({ observed_price: null }), { emeralds_now: 91000, ...AT }).status, 'unknown',
+      'without the asking price there is no sum to check');
+  });
+
+  await test('A balance stops being a witness once the intent is old', async () => {
+    const old = reconcileIntent(orphan(), { emeralds_now: 91000, now: 1000 + (4 * 3600) });
+    assert.strictEqual(old.status, 'unknown');
+    assert.ok(/old/.test(old.reason), old.reason);
+
+    // Including the balance that did not move: over four hours "unchanged" is
+    // not "untouched", because a purchase and a sale cancel out. The age gate
+    // comes before every conclusion, not just the confident one.
+    const untouched = reconcileIntent(orphan(), { emeralds_now: 100000, now: 1000 + (4 * 3600) });
+    assert.strictEqual(untouched.status, 'unknown');
+
+    // Within the window it is decisive again.
+    assert.strictEqual(reconcileIntent(orphan(), { emeralds_now: 100000, ...AT }).status, 'not_executed');
+  });
+
+  await test('One balance cannot attribute a spend among several open intents', async () => {
+    const shared = { emeralds_now: 91000, pending_count: 2, ...AT };
+    assert.strictEqual(reconcileIntent(orphan(), shared).status, 'unknown');
+
+    // Zero movement is still unambiguous, however many are outstanding.
+    const nothingSpent = reconcileIntent(orphan(), { emeralds_now: 100000, pending_count: 3, ...AT });
+    assert.strictEqual(nothingSpent.status, 'not_executed');
+  });
+
+  await test('Holding the item can veto a conclusion but never reach one', async () => {
+    const held = reconcileIntent(orphan(), { emeralds_now: 100000, item_in_inventory: true, ...AT });
+    assert.strictEqual(held.status, 'unknown',
+      'the item is there but nothing was paid; that needs a human');
+
+    const alsoHeld = reconcileIntent(orphan(), { emeralds_now: 95000, item_in_inventory: true, ...AT });
+    assert.strictEqual(alsoHeld.status, 'unknown', 'holding it does not make a wrong sum right');
+  });
+
+  await test('Reconciling writes an outcome, and an unknown writes nothing', async (file) => {
+    const { bot } = gameWorld({ emeralds: 91000, listings: [] });
+    const market = attachMarket(bot, { journal: createJournal({ path: file }) });
+    market.journal.recordIntent(orphan({ ts: Date.now() / 1000 }));
+    assert.strictEqual(market.journal.pending().length, 1);
+
+    const settled = market.reconcilePending();
+    assert.strictEqual(settled.checked, 1);
+    assert.strictEqual(settled.settled.length, 1);
+    assert.strictEqual(settled.settled[0].status, 'executed');
+    assert.strictEqual(market.journal.pending().length, 0, 'the intent should be closed now');
+
+    const outcome = market.journal.outcomeFor('i-orphan');
+    assert.strictEqual(outcome.status, 'executed');
+    assert.strictEqual(outcome.actual_price, 9000);
+    assert.strictEqual(outcome.resolution, 'reconciled',
+      'an inferred outcome must not look like one the buy path watched');
+    assert.strictEqual(outcome.reconciled, true);
+
+    // And it survives the restart that made it necessary.
+    assert.ok(createJournal({ path: file }).isCompleted('i-orphan'));
+  });
+
+  await test('An intent reconciliation cannot settle stays pending on disk', async (file) => {
+    const { bot } = gameWorld({ emeralds: 95000, listings: [] });
+    const market = attachMarket(bot, { journal: createJournal({ path: file }) });
+    market.journal.recordIntent(orphan({ ts: Date.now() / 1000 }));
+
+    const result = market.reconcilePending();
+    assert.strictEqual(result.settled.length, 0);
+    assert.strictEqual(result.stillPending.length, 1);
+    assert.ok(result.stillPending[0].reason);
+    assert.strictEqual(createJournal({ path: file }).pending().length, 1,
+      'an unsettled intent must still be pending after a restart');
+  });
+
+  await test('A trade reconciliation called executed is not bought again', async (file) => {
+    const { bot, state } = gameWorld({ emeralds: 91000, listings: [{ item: 'Spring', price: 9000 }] });
+    const market = attachMarket(bot, { journal: createJournal({ path: file }) });
+    market.journal.recordIntent(orphan({ ts: Date.now() / 1000 }));
+    market.reconcilePending();
+
+    const retry = await market.buy({ slot: 10 }, {
+      confirm: true, expectItem: 'Spring', intentId: 'i-orphan', settleMs: 0
+    });
+    assert.ok(retry.duplicate, 'the settled intent should refuse a second execution');
+    assert.strictEqual(state.sold.length, 0, 'it bought the thing a second time');
   });
 
   console.log(`\n\x1b[1;32mTrade journal tests: ${passed} passed.\x1b[0m`);

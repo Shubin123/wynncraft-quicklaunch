@@ -805,7 +805,7 @@ class BotManager extends EventEmitter {
           empty: !item,
           name: item?.name || 'empty',
           count: item?.count || 0,
-          customName: item?.customName ? stripFormatting(item.customName) : '',
+          customName: item?.customName ? (extractCleanText ? extractCleanText(item.customName) : stripFormatting(item.customName)) : '',
           isGlassPane: false,
           isCharacterSlot: false
         }))
@@ -914,6 +914,24 @@ class BotManager extends EventEmitter {
         ? 'These were started and never answered. Check the game before retrying: the trade may or may not have happened.'
         : null
     };
+  }
+
+  /**
+   * Settles what it can of the pending trades from the bot's own balance,
+   * instead of asking someone to go and look in the game.
+   *
+   * Whatever the evidence cannot argue stays pending and is returned as such,
+   * with the reason it could not be settled.
+   */
+  reconcileTrades(options = {}) {
+    if (!this.bot || !this.bot.market) {
+      return { ok: false, error: 'Bot is not connected', settled: [], stillPending: [] };
+    }
+    const result = this.bot.market.reconcilePending(options);
+    for (const resolution of result.settled || []) {
+      this.addLog('MARKET', `Reconciled ${resolution.intent_id}: ${resolution.status} - ${resolution.reason}`);
+    }
+    return result;
   }
 
   /**
@@ -1438,6 +1456,11 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/account/unlock') {
       const result = manager.setAccountLock(null);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/trades/reconcile') {
+      const result = manager.reconcileTrades(body || {});
       return json(result.ok ? 200 : 400, result);
     }
 

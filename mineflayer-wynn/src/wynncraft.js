@@ -1003,7 +1003,13 @@ function wynncraftPlugin(bot, options = {}) {
 
     for (const item of items) {
       const name = item.name.toLowerCase();
-      const custom = (item.customName ? stripFormatting(item.customName) : '').toLowerCase();
+      // A custom name arrives as a text component on 1.20.5+ and as a plain
+      // string before that; extractCleanText reads both. stripFormatting reads
+      // only the string and returns '' for anything else, which made every
+      // liquid emerald invisible here - 4096 emeralds each, counted as none.
+      // Nothing caught it until the bot was run against a real server
+      // (tests/test_protocol_harness.js); the stand-in hands over a string.
+      const custom = extractCleanText(item.customName).toLowerCase();
 
       if (name.includes('emerald_block') || custom.includes('emerald block')) {
         emeralds += item.count * 64;
