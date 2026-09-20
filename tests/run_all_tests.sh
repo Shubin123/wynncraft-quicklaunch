@@ -80,19 +80,25 @@ node "$SCRIPT_DIR/test_trades_api.js"
 # 15. Phase 1 market recorder: schema, dedupe, derived liquidity
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
 
-# 16. Trade engine: features, neural net, GA, delta pipeline
+# 16. Roll model: per-attribute RNG, percentile, and roll-aware pricing
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_roll_model.py"
+
+# 17. Training pipeline: runs, labels its calibration, beats the roll-blind model
+"${PYTHON_BIN}" "$SCRIPT_DIR/test_training.py"
+
+# 18. Trade engine: features, neural net, GA, delta pipeline
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_engine.py"
 
-# 17. Trade engine HTTP endpoints (starts a throwaway price server)
+# 19. Trade engine HTTP endpoints (starts a throwaway price server)
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_trade_api.py"
 
-# 18. Module Tests
+# 20. Module Tests
 node "$SCRIPT_DIR/test_module.js"
 
-# 19. Integration Tests
+# 21. Integration Tests
 node "$SCRIPT_DIR/test_integration.js"
 
-# 20. E2E Tests
+# 22. E2E Tests
 node "$SCRIPT_DIR/test_e2e.js"
 
 echo "=================================================="

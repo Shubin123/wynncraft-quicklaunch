@@ -1,0 +1,1480 @@
+{
+ "note": "Real entries from api.wynncraft.com/v3/item/database, trimmed to the fields wynn_item_db reads.",
+ "fetched_ts": 0,
+ "items": [
+  {
+   "displayName": "A16-L31 Handheld Mortar",
+   "internalName": "A16-L31 Handheld Mortar",
+   "tier": "fabled",
+   "type": "weapon",
+   "requirements": {
+    "level": 96,
+    "classRequirement": "shaman",
+    "defence": 45,
+    "strength": 45,
+    "dexterity": 45
+   },
+   "identifications": {
+    "exploding": {
+     "min": 12,
+     "raw": 40,
+     "max": 52
+    },
+    "walkSpeed": {
+     "min": -26,
+     "raw": -20,
+     "max": -14
+    },
+    "rawIntelligence": -30,
+    "raw1stSpellCost": {
+     "min": -5,
+     "raw": -17,
+     "max": -22
+    },
+    "mainAttackDamage": {
+     "min": 9,
+     "raw": 30,
+     "max": 39
+    }
+   }
+  },
+  {
+   "displayName": "Abiogenesis",
+   "internalName": "Abiogenesis",
+   "tier": "legendary",
+   "type": "armour",
+   "requirements": {
+    "level": 92,
+    "defence": 45,
+    "strength": 65,
+    "intelligence": 45
+   },
+   "identifications": {
+    "fireDamage": {
+     "min": 6,
+     "raw": 19,
+     "max": 25
+    },
+    "rawDefence": 8,
+    "spellDamage": {
+     "min": 6,
+     "raw": 19,
+     "max": 25
+    },
+    "healthRegenRaw": {
+     "min": 76,
+     "raw": 252,
+     "max": 328
+    },
+    "rawAttackSpeed": -18,
+    "rawIntelligence": 8,
+    "raw3rdSpellCost": {
+     "min": 10,
+     "raw": 8,
+     "max": 6
+    },
+    "rawMainAttackDamage": {
+     "min": 404,
+     "raw": 1346,
+     "max": 1750
+    }
+   }
+  },
+  {
+   "displayName": "Hazard",
+   "internalName": "Hazard",
+   "tier": "rare",
+   "type": "weapon",
+   "requirements": {
+    "level": 106,
+    "classRequirement": "warrior",
+    "defence": 45,
+    "dexterity": 55
+   },
+   "identifications": {
+    "exploding": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "lifeSteal": {
+     "min": 127,
+     "raw": 423,
+     "max": 550
+    },
+    "rawDefence": 10,
+    "healthRegen": {
+     "min": -39,
+     "raw": -30,
+     "max": -21
+    },
+    "waterDefence": {
+     "min": -39,
+     "raw": -30,
+     "max": -21
+    },
+    "3rdSpellCost": {
+     "min": -5,
+     "raw": -18,
+     "max": -23
+    }
+   }
+  },
+  {
+   "displayName": "Worthless Heirloom",
+   "internalName": "Worthless Heirloom",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 105,
+    "classRequirement": "warrior",
+    "defence": 40,
+    "dexterity": 40
+   },
+   "identifications": {
+    "knockback": {
+     "min": 18,
+     "raw": 60,
+     "max": 78
+    },
+    "lootBonus": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "combatExperience": {
+     "min": 9,
+     "raw": 31,
+     "max": 40
+    },
+    "mainAttackRange": {
+     "min": 11,
+     "raw": 35,
+     "max": 46
+    },
+    "rawMainAttackDamage": {
+     "min": 105,
+     "raw": 350,
+     "max": 455
+    }
+   }
+  },
+  {
+   "displayName": "Tornado",
+   "internalName": "Tornado",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 108,
+    "classRequirement": "assassin",
+    "agility": 60
+   },
+   "identifications": {
+    "knockback": {
+     "min": -65,
+     "raw": -50,
+     "max": -35
+    },
+    "jumpHeight": {
+     "min": 1,
+     "raw": 2,
+     "max": 3
+    },
+    "1stSpellCost": {
+     "min": -4,
+     "raw": -14,
+     "max": -18
+    },
+    "2ndSpellCost": {
+     "min": -6,
+     "raw": -19,
+     "max": -25
+    },
+    "rawAirSpellDamage": {
+     "min": 47,
+     "raw": 155,
+     "max": 202
+    }
+   }
+  },
+  {
+   "displayName": "Darksteel Full Helm",
+   "internalName": "Darksteel Full Helm",
+   "tier": "rare",
+   "type": "armour",
+   "requirements": {
+    "level": 90,
+    "defence": 45,
+    "dexterity": 45
+   },
+   "identifications": {
+    "thorns": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "reflection": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "walkSpeed": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "fireDamage": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "rawDefence": 10,
+    "rawStrength": 10,
+    "waterDamage": {
+     "min": -19,
+     "raw": -15,
+     "max": -10
+    },
+    "rawDexterity": 10,
+    "thunderDamage": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "rawAttackSpeed": -12,
+    "rawMainAttackDamage": {
+     "min": 315,
+     "raw": 1050,
+     "max": 1365
+    }
+   }
+  },
+  {
+   "displayName": "Phantom Roots",
+   "internalName": "Phantom Roots",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 113,
+    "classRequirement": "shaman",
+    "agility": 30,
+    "strength": 30,
+    "dexterity": 30,
+    "intelligence": 30
+   },
+   "identifications": {
+    "manaSteal": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "slowEnemy": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "rawAgility": 5,
+    "rawDefence": -10,
+    "rawStrength": 5,
+    "rawDexterity": 5,
+    "4thSpellCost": {
+     "min": -9,
+     "raw": -31,
+     "max": -40
+    },
+    "rawIntelligence": 5,
+    "combatExperience": {
+     "min": 6,
+     "raw": 19,
+     "max": 25
+    },
+    "elementalSpellDamage": {
+     "min": 7,
+     "raw": 23,
+     "max": 30
+    }
+   }
+  },
+  {
+   "displayName": "Solitude",
+   "internalName": "Solitude",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 84,
+    "classRequirement": "archer",
+    "quest": "The Lost",
+    "agility": 40
+   },
+   "identifications": {
+    "knockback": {
+     "min": 12,
+     "raw": 40,
+     "max": 52
+    },
+    "manaRegen": {
+     "min": 2,
+     "raw": 6,
+     "max": 8
+    },
+    "walkSpeed": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "spellDamage": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "combatExperience": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    }
+   }
+  },
+  {
+   "displayName": "Wayfinder",
+   "internalName": "Wayfinder",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 74,
+    "classRequirement": "assassin",
+    "agility": 20,
+    "intelligence": 30
+   },
+   "identifications": {
+    "lootBonus": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "manaSteal": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "walkSpeed": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "rawAgility": 4,
+    "rawIntelligence": 4,
+    "raw2ndSpellCost": {
+     "min": -1,
+     "raw": -4,
+     "max": -5
+    }
+   }
+  },
+  {
+   "displayName": "Brain Charge",
+   "internalName": "Brain Charge",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 35,
+    "dexterity": 23
+   },
+   "identifications": {
+    "rawDamage": {
+     "min": 11,
+     "raw": 38,
+     "max": 49
+    },
+    "reflection": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    },
+    "rawDexterity": 6,
+    "healthRegenRaw": {
+     "min": -22,
+     "raw": -17,
+     "max": -12
+    }
+   }
+  },
+  {
+   "displayName": "Alginate Dressing",
+   "internalName": "Alginate Dressing",
+   "tier": "TIER_3",
+   "type": "ingredient",
+   "requirements": {
+    "level": 77,
+    "skills": [
+     "armouring"
+    ]
+   },
+   "identifications": {
+    "walkSpeed": {
+     "min": -6,
+     "raw": -6,
+     "max": -5
+    },
+    "healingEfficiency": {
+     "min": 3,
+     "raw": 3,
+     "max": 4
+    }
+   }
+  },
+  {
+   "displayName": "Sneaky Caster",
+   "internalName": "Sneaky Caster",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 36,
+    "classRequirement": "mage",
+    "agility": 15
+   },
+   "identifications": {
+    "stealing": {
+     "min": 1,
+     "raw": 4,
+     "max": 5
+    },
+    "lootBonus": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "manaSteal": {
+     "min": 2,
+     "raw": 6,
+     "max": 8
+    },
+    "walkSpeed": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    },
+    "mainAttackDamage": {
+     "min": -16,
+     "raw": -12,
+     "max": -8
+    }
+   }
+  },
+  {
+   "displayName": "Impulse Effigy",
+   "internalName": "Impulse Effigy",
+   "tier": "rare",
+   "type": "weapon",
+   "requirements": {
+    "level": 101,
+    "classRequirement": "shaman",
+    "dexterity": 55,
+    "intelligence": 55
+   },
+   "identifications": {
+    "manaRegen": {
+     "min": -21,
+     "raw": -16,
+     "max": -11
+    },
+    "rawHealth": {
+     "min": -2249,
+     "raw": -1730,
+     "max": -1211
+    },
+    "rawMaxMana": {
+     "min": 15,
+     "raw": 50,
+     "max": 65
+    },
+    "rawStrength": 15,
+    "spellDamage": {
+     "min": 8,
+     "raw": 26,
+     "max": 34
+    },
+    "rawDexterity": 10,
+    "rawSpellDamage": {
+     "min": 55,
+     "raw": 184,
+     "max": 239
+    }
+   }
+  },
+  {
+   "displayName": "Tropical Honeysuckle",
+   "internalName": "Tropical Honeysuckle",
+   "tier": "TIER_1",
+   "type": "ingredient",
+   "requirements": {
+    "level": 53,
+    "skills": [
+     "alchemism"
+    ]
+   },
+   "identifications": {
+    "walkSpeed": {
+     "min": 4,
+     "raw": 4,
+     "max": 6
+    },
+    "gatherSpeed": {
+     "min": 4,
+     "raw": 4,
+     "max": 5
+    },
+    "healthRegenRaw": {
+     "min": 28,
+     "raw": 28,
+     "max": 35
+    }
+   }
+  },
+  {
+   "displayName": "Hanafubuki",
+   "internalName": "Hanafubuki",
+   "tier": "mythic",
+   "type": "weapon",
+   "requirements": {
+    "level": 102,
+    "classRequirement": "assassin",
+    "agility": 85,
+    "intelligence": 65
+   },
+   "identifications": {
+    "jumpHeight": {
+     "min": 1,
+     "raw": 3,
+     "max": 4
+    },
+    "rawStrength": 15,
+    "earthDefence": {
+     "min": 8,
+     "raw": 25,
+     "max": 33
+    },
+    "3rdSpellCost": {
+     "min": 20,
+     "raw": 15,
+     "max": 11
+    },
+    "4thSpellCost": {
+     "min": 13,
+     "raw": 10,
+     "max": 7
+    },
+    "elementalDamage": {
+     "min": 77,
+     "raw": 256,
+     "max": 333
+    }
+   }
+  },
+  {
+   "displayName": "Fingertrap",
+   "internalName": "Fingertrap",
+   "tier": "unique",
+   "type": "accessory",
+   "requirements": {
+    "level": 55
+   },
+   "identifications": {
+    "walkSpeed": {
+     "min": -8,
+     "raw": -6,
+     "max": -4
+    },
+    "rawStrength": -1,
+    "rawDexterity": -1,
+    "healthRegenRaw": {
+     "min": -22,
+     "raw": -17,
+     "max": -12
+    },
+    "rawSpellDamage": {
+     "min": 8,
+     "raw": 28,
+     "max": 36
+    },
+    "rawMainAttackDamage": {
+     "min": 11,
+     "raw": 37,
+     "max": 48
+    }
+   }
+  },
+  {
+   "displayName": "Snowslicer",
+   "internalName": "Snowslicer",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 41,
+    "classRequirement": "assassin",
+    "intelligence": 15
+   },
+   "identifications": {
+    "manaRegen": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "reflection": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "airDefence": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "rawAgility": 6,
+    "fireDefence": {
+     "min": -10,
+     "raw": -8,
+     "max": -6
+    },
+    "waterDefence": {
+     "min": 7,
+     "raw": 23,
+     "max": 30
+    },
+    "rawIntelligence": 8
+   }
+  },
+  {
+   "displayName": "Tome of Combat Mastery",
+   "internalName": "Tome of Combat Mastery",
+   "tier": "legendary",
+   "type": "tome",
+   "requirements": {
+    "level": 60
+   },
+   "identifications": {
+    "damage": {
+     "min": 1,
+     "raw": 4,
+     "max": 5
+    }
+   }
+  },
+  {
+   "displayName": "Trigger-Happy",
+   "internalName": "Trigger-Happy",
+   "tier": "rare",
+   "type": "weapon",
+   "requirements": {
+    "level": 115,
+    "classRequirement": "archer"
+   },
+   "identifications": {
+    "manaRegen": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "rawHealth": {
+     "min": -2060,
+     "raw": -1585,
+     "max": -1109
+    },
+    "fireDamage": {
+     "min": 9,
+     "raw": 30,
+     "max": 39
+    },
+    "rawStrength": -20,
+    "2ndSpellCost": {
+     "min": 65,
+     "raw": 50,
+     "max": 35
+    },
+    "4thSpellCost": {
+     "min": 65,
+     "raw": 50,
+     "max": 35
+    },
+    "raw3rdSpellCost": {
+     "min": -4,
+     "raw": -14,
+     "max": -18
+    }
+   }
+  },
+  {
+   "displayName": "Souffle",
+   "internalName": "Souffle",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 58,
+    "classRequirement": "assassin",
+    "agility": 28
+   },
+   "identifications": {
+    "airDamage": {
+     "min": 7,
+     "raw": 23,
+     "max": 30
+    },
+    "walkSpeed": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "airDefence": {
+     "min": 9,
+     "raw": 31,
+     "max": 40
+    },
+    "rawAgility": 9,
+    "rawMainAttackDamage": {
+     "min": 24,
+     "raw": 80,
+     "max": 104
+    }
+   }
+  },
+  {
+   "displayName": "Ragni's Old Shoes",
+   "internalName": "Ragni's Old Shoes",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 39,
+    "strength": 15
+   },
+   "identifications": {
+    "knockback": {
+     "min": 5,
+     "raw": 17,
+     "max": 22
+    },
+    "combatExperience": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    },
+    "mainAttackRange": {
+     "min": 4,
+     "raw": 14,
+     "max": 18
+    },
+    "mainAttackDamage": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    }
+   }
+  },
+  {
+   "displayName": "Doppler",
+   "internalName": "Doppler",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 50,
+    "agility": 25,
+    "dexterity": 25
+   },
+   "identifications": {
+    "airDamage": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    },
+    "walkSpeed": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "rawDefence": -5,
+    "fireDefence": {
+     "min": -17,
+     "raw": -13,
+     "max": -9
+    },
+    "spellDamage": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "thunderDamage": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    }
+   }
+  },
+  {
+   "displayName": "Gunkfueled Core",
+   "internalName": "Gunkfueled Core",
+   "tier": "TIER_3",
+   "type": "ingredient",
+   "requirements": {
+    "level": 103,
+    "skills": [
+     "armouring",
+     "woodworking"
+    ]
+   },
+   "identifications": {
+    "exploding": {
+     "min": 10,
+     "raw": 10,
+     "max": 15
+    },
+    "rawStrength": {
+     "min": 5,
+     "raw": 5,
+     "max": 7
+    },
+    "healthRegenRaw": {
+     "min": -180,
+     "raw": -180,
+     "max": -150
+    }
+   }
+  },
+  {
+   "displayName": "Dragon Dance",
+   "internalName": "Paradox",
+   "tier": "rare",
+   "type": "armour",
+   "requirements": {
+    "level": 98,
+    "agility": 45,
+    "defence": 45,
+    "dexterity": 45,
+    "intelligence": 45
+   },
+   "identifications": {
+    "lifeSteal": {
+     "min": -357,
+     "raw": -275,
+     "max": -192
+    },
+    "manaRegen": {
+     "min": 5,
+     "raw": 18,
+     "max": 23
+    },
+    "manaSteal": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    },
+    "walkSpeed": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "jumpHeight": 1,
+    "rawAgility": 5,
+    "rawDefence": 5,
+    "rawStrength": -99,
+    "spellDamage": {
+     "min": 6,
+     "raw": 21,
+     "max": 27
+    },
+    "earthDefence": {
+     "min": -26,
+     "raw": -20,
+     "max": -14
+    },
+    "rawDexterity": 5,
+    "healthRegenRaw": {
+     "min": -419,
+     "raw": -322,
+     "max": -225
+    },
+    "rawIntelligence": 5,
+    "rawSpellDamage": {
+     "min": 53,
+     "raw": 175,
+     "max": 228
+    },
+    "mainAttackDamage": {
+     "min": -65,
+     "raw": -50,
+     "max": -35
+    }
+   }
+  },
+  {
+   "displayName": "The Berserk",
+   "internalName": "The Berserk",
+   "tier": "legendary",
+   "type": "weapon",
+   "requirements": {
+    "level": 19,
+    "classRequirement": "warrior",
+    "strength": 10
+   },
+   "identifications": {
+    "knockback": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "airDefence": {
+     "min": -19,
+     "raw": -15,
+     "max": -10
+    },
+    "rawAgility": -3,
+    "earthDamage": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "rawStrength": 7,
+    "spellDamage": {
+     "min": -16,
+     "raw": -12,
+     "max": -8
+    },
+    "mainAttackDamage": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    }
+   }
+  },
+  {
+   "displayName": "Pulsing Tome of Defensive Mastery I\u058e",
+   "internalName": "Greedy Tome of Armour Mastery I",
+   "tier": "fabled",
+   "type": "tome",
+   "requirements": {
+    "level": 60
+   },
+   "identifications": {
+    "rawHealth": {
+     "min": 50,
+     "raw": 165,
+     "max": 215
+    },
+    "thunderDefence": {
+     "min": 2,
+     "raw": 6,
+     "max": 8
+    }
+   }
+  },
+  {
+   "displayName": "Altered Ash",
+   "internalName": "Altered Ash",
+   "tier": "TIER_0",
+   "type": "ingredient",
+   "requirements": {
+    "level": 15,
+    "skills": [
+     "alchemism",
+     "scribing"
+    ]
+   },
+   "identifications": {
+    "spellDamage": {
+     "min": 1,
+     "raw": 1,
+     "max": 5
+    }
+   }
+  },
+  {
+   "displayName": "Boulder",
+   "internalName": "Boulder",
+   "tier": "unique",
+   "type": "accessory",
+   "requirements": {
+    "level": 24,
+    "strength": 10
+   },
+   "identifications": {
+    "earthDefence": {
+     "min": 2,
+     "raw": 6,
+     "max": 8
+    },
+    "rawSpellDamage": {
+     "min": -3,
+     "raw": -2,
+     "max": -1
+    },
+    "rawMainAttackDamage": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    }
+   }
+  },
+  {
+   "displayName": "Dysnomia",
+   "internalName": "Dysnomia",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 52,
+    "strength": 25,
+    "dexterity": 30
+   },
+   "identifications": {
+    "manaSteal": {
+     "min": 2,
+     "raw": 8,
+     "max": 10
+    },
+    "walkSpeed": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "earthDamage": {
+     "min": 4,
+     "raw": 14,
+     "max": 18
+    },
+    "healthRegen": {
+     "min": -52,
+     "raw": -40,
+     "max": -28
+    },
+    "healingEfficiency": {
+     "min": -13,
+     "raw": -10,
+     "max": -7
+    },
+    "rawThunderDamage": {
+     "min": 15,
+     "raw": 50,
+     "max": 65
+    }
+   }
+  },
+  {
+   "displayName": "Wood Shavings",
+   "internalName": "Wood Shavings",
+   "tier": "TIER_0",
+   "type": "ingredient",
+   "requirements": {
+    "level": 43,
+    "skills": [
+     "scribing",
+     "woodworking"
+    ]
+   },
+   "identifications": {
+    "combatExperience": {
+     "min": 2,
+     "raw": 2,
+     "max": 3
+    }
+   }
+  },
+  {
+   "displayName": "Bantisu's Approach",
+   "internalName": "Bantisu's Approach",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 86
+   },
+   "identifications": {
+    "sprint": {
+     "min": 8,
+     "raw": 27,
+     "max": 35
+    },
+    "lootBonus": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "manaRegen": {
+     "min": 2,
+     "raw": 5,
+     "max": 7
+    },
+    "manaSteal": {
+     "min": 2,
+     "raw": 5,
+     "max": 7
+    },
+    "walkSpeed": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "airDefence": {
+     "min": 7,
+     "raw": 23,
+     "max": 30
+    },
+    "rawAgility": 8,
+    "rawDefence": 1,
+    "rawStrength": 1,
+    "sprintRegen": {
+     "min": 8,
+     "raw": 27,
+     "max": 35
+    },
+    "rawDexterity": 1,
+    "rawIntelligence": 1,
+    "combatExperience": {
+     "min": 8,
+     "raw": 25,
+     "max": 33
+    }
+   }
+  },
+  {
+   "displayName": "Lumina",
+   "internalName": "Lumina",
+   "tier": "legendary",
+   "type": "weapon",
+   "requirements": {
+    "level": 80,
+    "classRequirement": "shaman",
+    "agility": 35,
+    "dexterity": 45
+   },
+   "identifications": {
+    "airDamage": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "rawHealth": {
+     "min": -1625,
+     "raw": -1250,
+     "max": -875
+    },
+    "walkSpeed": {
+     "min": 8,
+     "raw": 25,
+     "max": 33
+    },
+    "waterDefence": {
+     "min": -39,
+     "raw": -30,
+     "max": -21
+    },
+    "thunderDamage": {
+     "min": 9,
+     "raw": 30,
+     "max": 39
+    },
+    "rawAttackSpeed": -1,
+    "rawMainAttackDamage": {
+     "min": 231,
+     "raw": 769,
+     "max": 1000
+    }
+   }
+  },
+  {
+   "displayName": "Artificial",
+   "internalName": "Artificial",
+   "tier": "unique",
+   "type": "armour",
+   "requirements": {
+    "level": 110,
+    "defence": 40,
+    "dexterity": 50
+   },
+   "identifications": {
+    "exploding": {
+     "min": 6,
+     "raw": 20,
+     "max": 26
+    },
+    "manaSteal": {
+     "min": 2,
+     "raw": 6,
+     "max": 8
+    },
+    "rawMaxMana": {
+     "min": -23,
+     "raw": -18,
+     "max": -13
+    },
+    "rawStrength": -8,
+    "rawDexterity": 8,
+    "rawFireDamage": {
+     "min": 41,
+     "raw": 135,
+     "max": 176
+    },
+    "raw1stSpellCost": {
+     "min": -1,
+     "raw": -3,
+     "max": -4
+    },
+    "raw4thSpellCost": {
+     "min": -1,
+     "raw": -3,
+     "max": -4
+    }
+   }
+  },
+  {
+   "displayName": "Ironwood Scale",
+   "internalName": "Ironwood Scale",
+   "tier": "TIER_3",
+   "type": "ingredient",
+   "requirements": {
+    "level": 65,
+    "skills": [
+     "armouring"
+    ]
+   },
+   "identifications": {
+    "rawDefence": {
+     "min": 4,
+     "raw": 4,
+     "max": 6
+    },
+    "earthDefence": {
+     "min": 18,
+     "raw": 18,
+     "max": 22
+    },
+    "gatherXpBonus": {
+     "min": 3,
+     "raw": 3,
+     "max": 4
+    }
+   }
+  },
+  {
+   "displayName": "Solar Pillar",
+   "internalName": "Solar Pillar",
+   "tier": "legendary",
+   "type": "weapon",
+   "requirements": {
+    "level": 53,
+    "classRequirement": "mage",
+    "defence": 35,
+    "intelligence": 30
+   },
+   "identifications": {
+    "rawHealth": {
+     "min": 180,
+     "raw": 600,
+     "max": 780
+    },
+    "rawDefence": 7,
+    "spellDamage": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "waterDamage": {
+     "min": 8,
+     "raw": 28,
+     "max": 36
+    },
+    "thunderDefence": {
+     "min": -32,
+     "raw": -25,
+     "max": -17
+    },
+    "combatExperience": {
+     "min": 4,
+     "raw": 12,
+     "max": 16
+    }
+   }
+  },
+  {
+   "displayName": "X-PM3 Exclusion Zone",
+   "internalName": "X-PM3 Exclusion Zone",
+   "tier": "legendary",
+   "type": "armour",
+   "requirements": {
+    "level": 90,
+    "dexterity": 45
+   },
+   "identifications": {
+    "manaSteal": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    },
+    "walkSpeed": {
+     "min": -16,
+     "raw": -12,
+     "max": -8
+    },
+    "rawAgility": 3,
+    "rawDefence": 3,
+    "rawStrength": 3,
+    "rawAttackSpeed": -1,
+    "rawIntelligence": -5,
+    "rawSpellDamage": {
+     "min": 47,
+     "raw": 158,
+     "max": 205
+    },
+    "mainAttackRange": {
+     "min": 7,
+     "raw": 23,
+     "max": 30
+    }
+   }
+  },
+  {
+   "displayName": "Proxima",
+   "internalName": "Proxima",
+   "tier": "legendary",
+   "type": "weapon",
+   "requirements": {
+    "level": 85,
+    "classRequirement": "warrior",
+    "agility": 20,
+    "defence": 20,
+    "strength": 20,
+    "dexterity": 20,
+    "intelligence": 20
+   },
+   "identifications": {
+    "lifeSteal": {
+     "min": -422,
+     "raw": -325,
+     "max": -227
+    },
+    "manaSteal": {
+     "min": 3,
+     "raw": 10,
+     "max": 13
+    },
+    "elementalDamage": {
+     "min": 4,
+     "raw": 14,
+     "max": 18
+    },
+    "healthRegenRaw": {
+     "min": -237,
+     "raw": -182,
+     "max": -127
+    },
+    "combatExperience": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    }
+   }
+  },
+  {
+   "displayName": "Rusty Spurs",
+   "internalName": "Rusty Spurs",
+   "tier": "TIER_0",
+   "type": "ingredient",
+   "requirements": {
+    "level": 36,
+    "skills": [
+     "jeweling"
+    ]
+   },
+   "identifications": {
+    "sprint": {
+     "min": 1,
+     "raw": 1,
+     "max": 3
+    },
+    "sprintRegen": {
+     "min": 0,
+     "raw": 0,
+     "max": -2
+    }
+   }
+  },
+  {
+   "displayName": "Quickshot",
+   "internalName": "Quickshot",
+   "tier": "unique",
+   "type": "weapon",
+   "requirements": {
+    "level": 50,
+    "classRequirement": "archer",
+    "dexterity": 20
+   },
+   "identifications": {
+    "rawDexterity": 8,
+    "rawAttackSpeed": 1,
+    "combatExperience": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    },
+    "mainAttackDamage": {
+     "min": 3,
+     "raw": 11,
+     "max": 14
+    }
+   }
+  },
+  {
+   "displayName": "Warp",
+   "internalName": "Warp",
+   "tier": "mythic",
+   "type": "weapon",
+   "requirements": {
+    "level": 99,
+    "classRequirement": "mage",
+    "agility": 125
+   },
+   "identifications": {
+    "exploding": {
+     "min": 15,
+     "raw": 50,
+     "max": 65
+    },
+    "airDamage": {
+     "min": 5,
+     "raw": 15,
+     "max": 20
+    },
+    "manaRegen": {
+     "min": -58,
+     "raw": -45,
+     "max": -31
+    },
+    "reflection": {
+     "min": 27,
+     "raw": 90,
+     "max": 117
+    },
+    "walkSpeed": {
+     "min": 54,
+     "raw": 180,
+     "max": 234
+    },
+    "rawAgility": 25,
+    "healthRegen": {
+     "min": -195,
+     "raw": -150,
+     "max": -105
+    },
+    "healthRegenRaw": {
+     "min": -1092,
+     "raw": -840,
+     "max": -588
+    },
+    "raw2ndSpellCost": {
+     "min": -90,
+     "raw": -299,
+     "max": -389
+    },
+    "healingEfficiency": {
+     "min": -39,
+     "raw": -30,
+     "max": -21
+    }
+   }
+  }
+ ]
+}

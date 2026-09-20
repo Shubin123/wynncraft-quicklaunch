@@ -40,6 +40,9 @@ from pathlib import Path
 DATA_DIR = Path.home() / ".local" / "share" / "wynn-dashboard"
 MODEL_FILE = DATA_DIR / "trade_model.json"
 STRATEGY_FILE = DATA_DIR / "strategy.json"
+# What a particular rolled copy is worth relative to a median copy of the same
+# item. Written by scripts/wynn_train.py; see docs/MODEL_TRAINING.md.
+ROLL_MODEL_FILE = DATA_DIR / "roll_model.json"
 
 MARKET_FEE = 0.05  # keep in sync with wynn_price_server.MARKET_FEE
 
@@ -295,6 +298,14 @@ class MLP:
             "history": history,
         }
 
+    @classmethod
+    def from_json(cls, payload: dict) -> "MLP":
+        """Rebuilds a trained net from a saved model file."""
+        model = cls(list(payload["layer_sizes"]))
+        model.weights = [[list(row) for row in layer] for layer in payload["weights"]]
+        model.biases = [list(layer) for layer in payload["biases"]]
+        return model
+
     # -- flat weight view, for neuroevolution --------------------------------
 
     def get_flat_weights(self) -> list[float]:
@@ -380,6 +391,93 @@ def build_training_samples(points: list[dict], horizon_days: float = 1.0,
 
 
 # ---------------------------------------------------------------------------
+# Roll model: what *this* copy is worth, not what the item is worth
+# ---------------------------------------------------------------------------
+#
+# The features above describe an item's price series, and every one of them
+# keys off its name. That is the right model for a fungible good and the wrong
+# one for Wynncraft gear, where each drop rolls its identifications
+# independently and two copies of the same item are not the same good.
+#
+# The split is deliberate. The series model says what an Idol is worth; the
+# roll model says what *this* Idol is worth as a multiple of that. Keeping the
+# second item-relative is what makes it learnable: the multiplier is shared
+# across every item in the game, so all of them are evidence for one curve,
+# instead of each item needing its own.
+
+def load_roll_model(path: Path = ROLL_MODEL_FILE) -> dict | None:
+    """The trained roll model, or None when nothing has been trained yet.
+
+    Absence is normal and must stay cheap: the engine priced items without this
+    before it existed, and still does.
+    """
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not payload.get("mlp") or not payload.get("features"):
+        return None
+    return payload
+
+
+def roll_multiplier(roll_model: dict | None, item_entry: dict | None,
+                    rolled_values: dict | None) -> dict | None:
+    """How much more (or less) this copy is worth than a median-roll copy.
+
+    Returns None whenever it cannot say - no model, no database entry, no
+    readable identifications - and the caller then prices the item exactly as
+    it did before. A roll nobody could read must not be scored as a bad one.
+    """
+    if not roll_model or not item_entry or not rolled_values:
+        return None
+    try:
+        import wynn_item_db as item_db
+    except ImportError:
+        return None
+
+    scored = item_db.score_roll(item_entry, rolled_values, roll_model.get("group_weights"))
+    features = item_db.roll_features(
+        item_entry.get("tier"), (item_entry.get("requirements") or {}).get("level"), scored)
+    if not features:
+        return None
+
+    standardizer = roll_model.get("standardizer") or {}
+    names = standardizer.get("names") or roll_model["features"]
+    means = standardizer.get("mean") or [0.0] * len(names)
+    scales = standardizer.get("scale") or [1.0] * len(names)
+    try:
+        vector = [(float(features[n]) - m) / (s or 1.0)
+                  for n, m, s in zip(names, means, scales)]
+    except KeyError:
+        return None
+
+    log_ratio = MLP.from_json(roll_model["mlp"]).predict(vector)
+    # Bounded by what the model was actually trained on. The best rolls are the
+    # rarest, so the fit is thinnest exactly where the premium is largest, and
+    # an unbounded net asked about a roll better than anything in its training
+    # set will happily invent a multiple nobody ever paid.
+    low, high = roll_model.get("log_ratio_range") or [-2.5, 2.5]
+    clamped = _clamp(log_ratio, float(low), float(high))
+    return {
+        "log_ratio": round(clamped, 5),
+        "multiplier": round(math.exp(clamped), 4),
+        # Says so when the model was asked about a roll outside its evidence.
+        "extrapolated": abs(log_ratio - clamped) > 1e-9,
+        "percentile": round(scored["percentile"], 5) if scored["percentile"] is not None else None,
+        "quality_weighted": round(scored["quality_weighted"], 5),
+        "coverage": round(scored["coverage"], 3),
+        "n_observed": scored["n_observed"],
+        "n_rolled": scored["n_rolled"],
+        # Carried through to every caller so a synthetic-calibrated number can
+        # never be mistaken for a market-calibrated one downstream.
+        "calibration": roll_model.get("calibration", "unknown"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Delta pipeline
 # ---------------------------------------------------------------------------
 
@@ -428,7 +526,8 @@ def estimate_hold_days(features: dict, live: dict | None, strategy: dict,
 def compute_delta(item: str, points: list[dict], live: dict | None,
                   live_ask: float | None = None, model: MLP | None = None,
                   strategy: dict | None = None,
-                  hold_observation: dict | None = None) -> dict | None:
+                  hold_observation: dict | None = None,
+                  roll_adjustment: dict | None = None) -> dict | None:
     """One item's edge: fair value versus what it can actually be bought for.
 
     ``live_ask`` is the in-game asking price scraped by the bot; without it we
@@ -464,6 +563,13 @@ def compute_delta(item: str, points: list[dict], live: dict | None,
     trend_estimate = features["_last_price"] * (1 + features["trend_slope"])
     fit_weight = _clamp(features["trend_r2"], 0.0, 1.0) * _clamp(features["_n_points"] / 10.0, 0.0, 1.0)
     fair_value = (1 - fit_weight) * reference + fit_weight * trend_estimate
+
+    # The series above prices the item. If this listing's roll was read, it
+    # prices *this copy*: a 99th-percentile roll listed slightly above the
+    # item's median is a buy, and the roll-blind pipeline sees only "above
+    # median" and passes.
+    if roll_adjustment and roll_adjustment.get("multiplier"):
+        fair_value *= float(roll_adjustment["multiplier"])
 
     model_return = 0.0
     if model is not None:
@@ -505,6 +611,9 @@ def compute_delta(item: str, points: list[dict], live: dict | None,
         "risk": round(risk, 4),
         "score": round(score, 6),
         "source": source,
+        # Null whenever the roll could not be read, which is the common case
+        # until the recorder starts capturing identifications.
+        "roll": roll_adjustment or None,
         "n_points": features["_n_points"],
         "span_days": round(features["_span_days"], 2),
         "features": {name: round(features[name], 6) for name in FEATURE_NAMES},
