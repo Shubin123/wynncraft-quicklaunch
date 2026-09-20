@@ -185,20 +185,44 @@ worth.
 
 In dependency order.
 
-1. **Record identifications.** `classifySlot()` reads price, amount, seller,
-   tier and shiny off a listing's lore and discards the stat lines.
-   `parse_identification_lore()` already reads them Python-side; the recorder in
-   `wynn_market_log.py` needs to call it and write the result onto
-   `listing_observation`, and `item_variant` in the data dictionary needs to
-   carry the roll rather than just tier and shiny.
+1. ~~**Record identifications.**~~ **Done.** `record_scan()` now calls
+   `parse_identification_lore()` and writes the roll onto
+   `listing_observation.identifications`, absent rather than empty when nothing
+   was read. Scoring is a derivation (`derive_roll_quality()`), not part of the
+   observation, because it depends on the item database and the attribute
+   weights and both move.
+
+   One thing said here earlier was wrong: that `item_variant` should carry the
+   roll. It should not. `item_variant` is what a price series is grouped by, and
+   a variant per roll would make every series exactly one observation long —
+   leaving the item with no price level for the multiplier to multiply. The
+   decomposition in §2 needs a coarse variant *and* a separate roll dimension,
+   which is what it now has.
+
+   The parser is unit-aware, which matters more than it sounds: 29
+   identifications come in a percentage form and a flat form sharing one display
+   label — "Spell Damage" is `spellDamage` with a `%` and `rawSpellDamage`
+   without. Scoring a flat roll against a percentage range would not be a small
+   error, since the ranges are different sizes.
 2. **Record sales, not just listings.** `listing_lifecycle.resolution` is
    deliberately coarse — a listing that vanishes was sold *or* pulled. For
    training, a vanished listing at a known price and roll is a usable upper
    bound on a sale, and should be labelled as such rather than as a sale.
-3. **Retrain on recorded listings.** `wynn_train.py` needs one new input path:
-   the dataset builder currently calls the simulator. When real rows exist it
-   reads those instead, the simulator is deleted from the training path rather
-   than tuned to match, and `calibration` becomes `"observed"`.
+3. ~~**Retrain on recorded listings.**~~ **Wired, waiting on data.**
+   `wynn_train.py --from-log market_scans.jsonl` reads recorded rows via
+   `training_rows()`, labels each listing against the median price of its own
+   item, and stamps the artifact `calibration: "observed"` with no
+   weight-recovery claim, because against real prices there is no hidden answer
+   to recover. It refuses to run on fewer than 50 usable listings: a model
+   fitted to a handful would still carry the `observed` stamp, and the stamp is
+   what anyone downstream reads.
+
+   An item observed at only one price contributes nothing — its own price is the
+   median, so the label is zero by construction, and feeding that in would teach
+   the model that rolls do not move prices.
+
+   What is still missing is the data. Nothing has been recorded yet, so nothing
+   has been trained this way except in tests.
 4. **Score the forecasts.** `decision` rows plus later `price_point`s make every
    call checkable after the fact (data dictionary §6). Until that loop closes,
    held-out R² is the only evidence there is, and held-out R² on one's own

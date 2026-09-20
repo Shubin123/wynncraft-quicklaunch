@@ -353,61 +353,141 @@ def roll_features(tier: str | None, level: float | None, scored: dict) -> dict |
 # ---------------------------------------------------------------------------
 
 # Wynncraft writes identifications into item lore as lines like
-#   "+55 Strength", "-12% Walk Speed", "1200 Health", "+8/3s Mana Regen"
-# The display names differ from the API's camelCase keys, so they are mapped
-# back here. Only the ones that actually roll are worth the mapping.
-_LORE_NAMES = {
-    "strength": "rawStrength", "dexterity": "rawDexterity", "intelligence": "rawIntelligence",
-    "defence": "rawDefence", "defense": "rawDefence", "agility": "rawAgility",
-    "health": "rawHealth", "health regen": "healthRegen", "health regeneration": "healthRegen",
-    "mana regen": "manaRegen", "mana regeneration": "manaRegen", "mana steal": "manaSteal",
-    "life steal": "lifeSteal", "max mana": "rawMaxMana",
-    "walk speed": "walkSpeed", "sprint": "sprint", "sprint regen": "sprintRegen",
-    "jump height": "jumpHeight",
-    "spell damage": "spellDamage", "main attack damage": "mainAttackDamage",
-    "earth damage": "earthDamage", "thunder damage": "thunderDamage",
-    "water damage": "waterDamage", "fire damage": "fireDamage", "air damage": "airDamage",
-    "earth defence": "earthDefence", "thunder defence": "thunderDefence",
-    "water defence": "waterDefence", "fire defence": "fireDefence", "air defence": "airDefence",
-    "elemental defence": "elementalDefence", "elemental damage": "elementalDamage",
-    "loot bonus": "lootBonus", "loot quality": "lootQuality", "stealing": "stealing",
-    "xp bonus": "combatExperience", "combat xp bonus": "combatExperience",
-    "poison": "poison", "thorns": "thorns", "reflection": "reflection",
-    "exploding": "exploding", "healing efficiency": "healingEfficiency",
-    "1st spell cost": "raw1stSpellCost", "2nd spell cost": "raw2ndSpellCost",
-    "3rd spell cost": "raw3rdSpellCost", "4th spell cost": "raw4thSpellCost",
-}
+#
+#     +55 Strength          -12% Walk Speed        +8/5s Mana Regen
+#
+# and the API's camelCase keys have to be recovered from those display labels.
+# The `%` matters: 29 identifications come in a percentage form and a flat form
+# that *share a display label* - "Spell Damage" is `spellDamage` with a percent
+# sign and `rawSpellDamage` without, "Health Regen" is `healthRegen` or
+# `healthRegenRaw`. A parser that ignored the sign would quietly score a flat
+# roll against a percentage range, which is not a small error: the ranges are
+# different sizes and the quality would be meaningless rather than merely wrong.
+#
+# Each label maps to (percentage form, flat form). Where only one form exists
+# the unit does not disambiguate anything and either reading is accepted.
 
-_LORE_LINE = re.compile(
-    r"^\s*([+-]?\d+(?:\.\d+)?)\s*(%|/\d+s|/3s)?\s+(.+?)\s*$"
-)
+_ELEMENTS = ["earth", "thunder", "water", "fire", "air", "neutral", "elemental"]
+_SPELL_ORDINALS = ["1st", "2nd", "3rd", "4th"]
 
 
-def parse_identification_lore(lines: list[str]) -> dict[str, float]:
+def _build_lore_names() -> dict[str, tuple[str | None, str | None]]:
+    forms: dict[str, tuple[str | None, str | None]] = {
+        # skill points and pools: flat only
+        "strength": (None, "rawStrength"),
+        "dexterity": (None, "rawDexterity"),
+        "intelligence": (None, "rawIntelligence"),
+        "defence": (None, "rawDefence"),
+        "defense": (None, "rawDefence"),
+        "agility": (None, "rawAgility"),
+        "health": (None, "rawHealth"),
+        "max mana": (None, "rawMaxMana"),
+        # both forms share a label
+        "health regen": ("healthRegen", "healthRegenRaw"),
+        "spell damage": ("spellDamage", "rawSpellDamage"),
+        "main attack damage": ("mainAttackDamage", "rawMainAttackDamage"),
+        "damage": ("damage", "rawDamage"),
+        # single form
+        "mana regen": (None, "manaRegen"),
+        "mana steal": (None, "manaSteal"),
+        "life steal": (None, "lifeSteal"),
+        "walk speed": ("walkSpeed", None),
+        "sprint": ("sprint", None),
+        "sprint regen": ("sprintRegen", None),
+        "jump height": (None, "jumpHeight"),
+        "attack speed": (None, "rawAttackSpeed"),
+        "main attack range": (None, "mainAttackRange"),
+        "healing efficiency": ("healingEfficiency", None),
+        "critical damage bonus": ("criticalDamageBonus", None),
+        "critical damage": ("criticalDamageBonus", None),
+        "elemental defence": ("elementalDefence", None),
+        "poison": (None, "poison"),
+        "thorns": ("thorns", None),
+        "reflection": ("reflection", None),
+        "exploding": ("exploding", None),
+        "knockback": ("knockback", None),
+        "slow enemy": ("slowEnemy", None),
+        "weaken enemy": ("weakenEnemy", None),
+        "stealing": ("stealing", None),
+        "loot bonus": ("lootBonus", None),
+        "loot quality": ("lootQuality", None),
+        "xp bonus": ("combatExperience", None),
+        "combat xp bonus": ("combatExperience", None),
+        "gather xp bonus": ("gatherXpBonus", None),
+        "gathering xp bonus": ("gatheringExperience", None),
+        "gather speed": ("gatherSpeed", None),
+    }
+    for element in _ELEMENTS:
+        title = element.capitalize()
+        forms[f"{element} damage"] = (f"{element}Damage", f"raw{title}Damage")
+        forms[f"{element} spell damage"] = (f"{element}SpellDamage", f"raw{title}SpellDamage")
+        forms[f"{element} main attack damage"] = (
+            f"{element}MainAttackDamage", f"raw{title}MainAttackDamage")
+        if element != "neutral":
+            forms[f"{element} defence"] = (f"{element}Defence", None)
+    for ordinal in _SPELL_ORDINALS:
+        title = ordinal[0].upper() + ordinal[1:]
+        forms[f"{ordinal} spell cost"] = (f"{ordinal}SpellCost", f"raw{title}SpellCost")
+    return forms
+
+
+_LORE_NAME_FORMS = _build_lore_names()
+
+# "<number>[%][/Ns] <label>". The sign is part of the number; the percent sign
+# and the "/3s" cadence are units, not part of the label.
+_LORE_LINE = re.compile(r"^([+-]?\d+(?:\.\d+)?)\s*(%)?(?:\s*/\s*\d+s)?\s+(.+)$")
+
+# Colour codes, and the bracketed roll percentage or star rating Wynncraft
+# appends to an identified item.
+_COLOUR = re.compile(r"§[0-9a-fk-or]", re.IGNORECASE)
+_BRACKETED = re.compile(r"[\[(][^\])]*[\])]")
+_TRAILING_MARKS = re.compile(r"[\u2600-\u27bf\u2b00-\u2bff*+\s]+$")
+
+
+def lore_key(label: str, is_percent: bool) -> str | None:
+    """The API key for a display label, given whether the line carried a `%`."""
+    forms = _LORE_NAME_FORMS.get(label.strip().lower())
+    if not forms:
+        return None
+    percent_form, flat_form = forms
+    if is_percent and percent_form:
+        return percent_form
+    if not is_percent and flat_form:
+        return flat_form
+    # Only one form exists, so the unit distinguishes nothing.
+    return percent_form or flat_form
+
+
+def parse_identification_lore(lines) -> dict[str, float]:
     """Pulls rolled identifications out of a listing's lore.
 
-    Deliberately forgiving: lore carries colour codes, glyphs, requirement
+    Deliberately forgiving. Lore carries colour codes, glyphs, requirement
     lines, flavour text and the price, and anything that is not recognisably
-    "<number> <known stat name>" is skipped rather than guessed at. A missed
-    line costs coverage, which `score_roll` reports; a misread line would
-    poison a price.
+    "<number> <known stat>" is skipped rather than guessed at. A skipped line
+    costs coverage, which `score_roll` reports and the model is given; a
+    misread line would poison a price, which nothing reports.
     """
     found: dict[str, float] = {}
     for line in lines or []:
-        text = re.sub(r"§[0-9a-fk-or]", "", str(line)).strip()
-        # Drop the bracketed roll percentage Wynncraft appends, e.g. "[73%]".
-        text = re.sub(r"\[[^\]]*\]", "", text).strip()
+        if not isinstance(line, str):
+            continue
+        text = _BRACKETED.sub(" ", _COLOUR.sub("", line)).strip()
         if not text or ":" in text:
-            continue  # "Price: ...", "Seller: ..." and similar are not stats
+            continue  # "Price: ...", "Seller: ...", "Combat Lv. Min: ..."
         match = _LORE_LINE.match(text)
         if not match:
             continue
-        number, _unit, label = match.groups()
-        key = _LORE_NAMES.get(label.strip().lower())
+        number, percent, label = match.groups()
+        key = lore_key(_TRAILING_MARKS.sub("", label), bool(percent))
         if not key:
             continue
         try:
-            found[key] = float(number)
+            value = float(number)
         except ValueError:
             continue
+        if math.isnan(value) or math.isinf(value):
+            continue
+        # First reading wins: Wynncraft lists each identification once, and a
+        # second match is more likely a flavour line that happened to parse.
+        found.setdefault(key, value)
     return found

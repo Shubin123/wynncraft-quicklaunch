@@ -42,6 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import wynn_item_db as item_db
+import wynn_market_log as market_log
 import wynn_market_sim as market_sim
 from wynn_trade_engine import MLP
 
@@ -346,6 +347,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quick", action="store_true", help="a small, fast run for tests")
     parser.add_argument("--out", type=Path, default=ROLL_MODEL_FILE)
     parser.add_argument("--refresh-db", action="store_true", help="refetch the item database")
+    parser.add_argument("--from-log", type=Path, default=None,
+                        help="train on recorded listings (market_scans.jsonl) instead of the "
+                             "simulator; the artifact is then calibrated 'observed'")
     parser.add_argument("--item-db", type=Path, default=None,
                         help="read the item database from this file instead of the cache "
                              "(tests point it at a fixture so they need no network)")
@@ -364,9 +368,32 @@ def main(argv: list[str] | None = None) -> int:
         by_name = item_db.load_item_db(refresh=args.refresh_db)
     print(f"  {len(by_name)} items")
 
-    print(f"Simulating a market: {args.items} items x {args.per_item} listings...")
-    listings = market_sim.build_dataset(by_name, n_items=args.items,
-                                        per_item=args.per_item, seed=args.seed)
+    if args.from_log:
+        print(f"Reading recorded listings from {args.from_log}...")
+        rows = []
+        for line in args.from_log.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue  # a line torn by a crash costs itself, not the run
+        listings = market_log.training_rows(rows, by_name)
+        calibration = "observed"
+        if len(listings) < 50:
+            # Refusing is the point. A model fitted to a handful of listings
+            # would carry an "observed" stamp and be worth less than the
+            # simulator it replaced, and the stamp is what people read.
+            print(f"Only {len(listings)} usable recorded listings; need at least 50. "
+                  "Keep recording, or run without --from-log for the synthetic pipeline.",
+                  file=sys.stderr)
+            return 1
+    else:
+        print(f"Simulating a market: {args.items} items x {args.per_item} listings...")
+        listings = market_sim.build_dataset(by_name, n_items=args.items,
+                                            per_item=args.per_item, seed=args.seed)
+        calibration = "synthetic"
     print(f"  {len(listings)} listings")
 
     print("Evolving attribute-group weights...")
@@ -401,22 +428,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  held-out R2 {held['r2']:+.4f}   median pricing error "
               f"{held['median_price_error_pct']:.1f}%")
 
-    # Did the search find the weights the simulator hid?
-    true_weights = market_sim.TRUE_GROUP_WEIGHTS
+    # Did the search find the weights the simulator hid? Only a question when
+    # there was a hidden answer: against recorded prices the weights are what
+    # the market says they are, and there is nothing to check them against.
     recovered = evolved["weights"]
-    order = item_db.GROUP_NAMES
-    recovery = spearman([true_weights[g] for g in order], [recovered[g] for g in order])
+    if calibration == "synthetic":
+        order = item_db.GROUP_NAMES
+        true_weights = market_sim.TRUE_GROUP_WEIGHTS
+        recovery = spearman([true_weights[g] for g in order], [recovered[g] for g in order])
+    else:
+        true_weights, recovery = None, None
 
     best = results["aware"]
     artifact = {
         "version": 1,
         # The single most important field in this file.
-        "calibration": "synthetic",
+        "calibration": calibration,
         "calibration_note": (
             "Trained against wynn_market_sim, not observed Wynncraft prices. The roll "
             "arithmetic uses the real item database; the price response does not. Use for "
             "ranking and for wiring, not as a valuation. Retrain on recorded listings "
             "before trusting a number."
+            if calibration == "synthetic" else
+            "Trained on listings recorded from the Trade Market. Asking prices, not sale "
+            "prices, and the label is each listing against the median of its own item, so "
+            "an item observed only at one price contributes nothing."
         ),
         "trained_ts": time.time(),
         "target": "log(price of this copy / price of a median-roll copy of the same item)",
@@ -443,6 +479,7 @@ def main(argv: list[str] | None = None) -> int:
                 "true_weights_for_comparison": true_weights,
                 "history": evolved["history"][-5:],
             },
+            "source": "recorded listings" if calibration == "observed" else "wynn_market_sim",
             "models": {
                 label: {
                     "features": result.get("features", []),
@@ -466,9 +503,10 @@ def main(argv: list[str] | None = None) -> int:
         held = results[label]["held_out"]
         print(f"{label:24s} {held['r2']:>+12.4f} {held['median_price_error_pct']:>13.1f}%")
     print("=" * 66)
-    print(f"group-weight recovery (Spearman vs the hidden truth): {recovery:+.3f}")
+    if recovery is not None:
+        print(f"group-weight recovery (Spearman vs the hidden truth): {recovery:+.3f}")
     print(f"written to {args.out}")
-    print("calibration: SYNTHETIC - see docs/MODEL_TRAINING.md")
+    print(f"calibration: {calibration.upper()} - see docs/MODEL_TRAINING.md")
     return 0
 
 

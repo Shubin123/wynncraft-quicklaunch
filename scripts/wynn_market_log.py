@@ -13,17 +13,34 @@ measures it instead.
 Scoped to prices. Seller names are needed momentarily to count how many
 distinct sellers are competing on an item within one scan, and are discarded
 at that point: no row written by this module is keyed to a player.
+
+Rolls are recorded raw, not scored. Each ``listing_observation`` carries the
+identifications read off the listing's lore exactly as they were displayed;
+turning those into a quality or a percentile needs the item database and a set
+of group weights, both of which change under you, so scoring is a derivation
+(``derive_roll_quality``) and not part of the observation. That is the same
+split the rest of this module already keeps: observations are what was seen,
+derived files are rebuildable opinions about it.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import threading
 import time
 from pathlib import Path
+
+try:
+    from wynn_item_db import parse_identification_lore
+except ImportError:  # pragma: no cover - the recorder still records without it
+    # Losing rolls is bad; losing the price log because a sibling module moved
+    # would be worse. Degrade to no identifications and keep writing.
+    def parse_identification_lore(lines):
+        return {}
 
 DATA_DIR = Path.home() / ".local" / "share" / "wynn-dashboard"
 SCAN_FILE = DATA_DIR / "market_scans.jsonl"
@@ -142,7 +159,7 @@ def record_scan(market: dict, session_id=None, world=None, now: float | None = N
     for listing in listings:
         name = listing.get("customName") or listing.get("name")
         variant = item_variant(name, listing.get("tier"), bool(listing.get("shiny")))
-        rows.append({
+        observation = {
             "type": "listing_observation",
             "scan_id": scan_id,
             "ts": now,
@@ -153,7 +170,15 @@ def record_scan(market: dict, session_id=None, world=None, now: float | None = N
             "tier": listing.get("tier"),
             "shiny": bool(listing.get("shiny")),
             "listing_fingerprint": listing_fingerprint(variant, listing["price"], listing.get("amount")),
-        })
+        }
+
+        # The roll, as displayed. Two copies of one item are different goods -
+        # this is the only record of which one was on the board, and without it
+        # every price of a rolled item is an average over a family.
+        identifications = parse_identification_lore(listing.get("lore"))
+        if identifications:
+            observation["identifications"] = identifications
+        rows.append(observation)
 
     path = scan_file()
     with _write_lock:
@@ -312,6 +337,96 @@ def derive_depth(rows: list[dict]) -> list[dict]:
             row["undercut_delta"] = row["ask_min"] - previous_floor[item]
         previous_floor[item] = row["ask_min"]
     return depth
+
+
+def derive_roll_quality(rows: list[dict], by_name: dict[str, dict],
+                        weights: dict[str, float] | None = None) -> list[dict]:
+    """Scores each recorded roll against the item database.
+
+    Derived rather than recorded, because it depends on two things the
+    observation cannot pin down: the item database, which changes on game
+    updates, and the attribute weights, which the optimizer rewrites every time
+    it is retrained. Scoring at record time would freeze both into the log and
+    make an old row incomparable with a new one.
+
+    Observations whose item is not in the database, or whose lore yielded
+    nothing, are skipped - not scored as bad rolls.
+    """
+    try:
+        from wynn_item_db import score_roll
+    except ImportError:
+        return []
+
+    _, observations = split_rows(rows)
+    scored = []
+    for observation in observations:
+        identifications = observation.get("identifications")
+        if not identifications:
+            continue
+        item = by_name.get(observation["item_key"])
+        if not item:
+            continue
+        roll = score_roll(item, identifications, weights)
+        if roll["quality_weighted"] is None:
+            continue
+        scored.append({
+            "ts": observation["ts"],
+            "scan_id": observation["scan_id"],
+            "item_key": observation["item_key"],
+            "listing_fingerprint": observation["listing_fingerprint"],
+            "price": observation["price"],
+            "quality_weighted": round(roll["quality_weighted"], 5),
+            "quality_mean": round(roll["quality_mean"], 5),
+            "quality_max": round(roll["quality_max"], 5),
+            "percentile": round(roll["percentile"], 5),
+            "n_observed": roll["n_observed"],
+            "n_rolled": roll["n_rolled"],
+            "coverage": round(roll["coverage"], 4),
+        })
+    return scored
+
+
+def training_rows(rows: list[dict], by_name: dict[str, dict]) -> list[dict]:
+    """Recorded listings in the shape the roll trainer consumes.
+
+    The label is each listing's price against the median price of that item's
+    other observations - the same item-relative target the model is trained on,
+    so the multiplier stays comparable across items.
+
+    An item with only one observed listing contributes nothing: its own price
+    *is* the median, the label is zero by construction, and feeding that in
+    would teach the model that rolls do not matter.
+    """
+    _, observations = split_rows(rows)
+
+    by_item: dict[str, list[dict]] = {}
+    for observation in observations:
+        if observation.get("identifications") and observation["item_key"] in by_name:
+            by_item.setdefault(observation["item_key"], []).append(observation)
+
+    dataset = []
+    for item_key, group in by_item.items():
+        if len(group) < 2:
+            continue
+        prices = sorted(o["price"] for o in group)
+        median = prices[len(prices) // 2]
+        if median <= 0:
+            continue
+        item = by_name[item_key]
+        for observation in group:
+            if observation["price"] <= 0:
+                continue
+            dataset.append({
+                "item": item.get("displayName") or item_key,
+                "tier": (item.get("tier") or observation.get("tier")),
+                "level": (item.get("requirements") or {}).get("level", 1) or 1,
+                "rolled": observation["identifications"],
+                "n_rolled_true": None,
+                "true_percentile": None,
+                "log_price_ratio": math.log(observation["price"] / median),
+                "observations_for_item": len(group),
+            })
+    return dataset
 
 
 def hold_statistics_by_item(rows: list[dict]) -> dict[str, dict]:

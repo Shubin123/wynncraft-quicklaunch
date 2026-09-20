@@ -283,6 +283,168 @@ def _():
     assert log.prune(days=1) == 0
 
 
+
+# ---------------------------------------------------------------------------
+# Rolls: what was actually on the board, not just what it was called
+# ---------------------------------------------------------------------------
+#
+# A Wynncraft item is a family of goods - every drop rolls its identifications
+# independently - so a price recorded against a name alone is an average over
+# that family. These cover the recorder reading the roll off the listing's lore.
+
+FIXTURE_DB = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "item_db_sample.json").read_text())
+BY_NAME = {str(i["displayName"]).strip().lower(): i for i in FIXTURE_DB["items"]}
+
+
+def market_with(lore, name="Idol", price=10000):
+    return {
+        "open": True, "isMarket": True, "containerSlots": 54,
+        "listings": [{
+            "slot": 10, "kind": "listing", "name": "bow", "customName": name,
+            "price": price, "amount": 1, "tier": "Legendary", "shiny": False,
+            "lore": lore,
+        }],
+    }
+
+
+def only_observation(rows):
+    return [r for r in rows if r["type"] == "listing_observation"][0]
+
+
+@test("A listing's rolls are recorded from its lore")
+def _():
+    # Written out by hand, in the shape Wynncraft displays, so the labels are
+    # an independent assertion rather than whatever the parser's own table says.
+    scan = log.record_scan(market_with([
+        "\u00a77Legendary Item",
+        "\u00a78Combat Lv. Min: 103",
+        "\u00a7a+55 Strength",
+        "\u00a7c-12% Walk Speed",
+        "\u00a7a+8/5s Mana Regen",
+        "\u00a7a+1200 Health",
+        "\u00a7aPrice: 1 le",
+        "\u00a78Seller: Someone",
+    ]), now=1000.0, min_interval=0)
+    assert scan is not None
+
+    observation = only_observation(log.read_rows())
+    rolled = observation.get("identifications")
+    assert rolled, "the roll was not recorded"
+    assert rolled["rawStrength"] == 55.0, rolled
+    assert rolled["walkSpeed"] == -12.0, rolled
+    assert rolled["manaRegen"] == 8.0, rolled
+    assert rolled["rawHealth"] == 1200.0, rolled
+    # The price and the seller are not identifications.
+    assert len(rolled) == 4, rolled
+
+
+@test("The percentage and flat forms of one stat are not confused")
+def _():
+    # 29 identifications come in both forms sharing a display label. Scoring a
+    # flat roll against a percentage range would not be a small error - the
+    # ranges are different sizes, so the quality would be meaningless.
+    log.record_scan(market_with([
+        "\u00a7a+15% Spell Damage",
+        "\u00a7a+240 Spell Damage",
+        "\u00a7a+15% Health Regen",
+        "\u00a7a+35 Health Regen",
+    ]), now=1000.0, min_interval=0)
+
+    rolled = only_observation(log.read_rows())["identifications"]
+    assert rolled["spellDamage"] == 15.0, rolled
+    assert rolled["rawSpellDamage"] == 240.0, rolled
+    assert rolled["healthRegen"] == 15.0, rolled
+    assert rolled["healthRegenRaw"] == 35.0, rolled
+
+
+@test("Lore that yields no identifications leaves the field absent, not empty")
+def _():
+    # Absent means "nothing was read". An empty object would read as "we looked
+    # and the item has no rolls", which is a different and wrong claim.
+    log.record_scan(market_with([
+        "\u00a77Legendary Item", "\u00a7aPrice: 1 le", "\u00a78Seller: Someone",
+    ]), now=1000.0, min_interval=0)
+    assert "identifications" not in only_observation(log.read_rows())
+
+
+@test("Hostile or missing lore does not stop the scan being recorded")
+def _():
+    # The price log is the more important record: losing it because a lore line
+    # was strange would be a far worse failure than losing the roll.
+    for lore in ([], None, ["\u00a7\u00a7\u00a7"], ["x" * 5000], ["+ Strength"],
+                 ["12"], ["+999999999999 Strength"]):
+        log.reset_dedupe_state()
+        scan = log.record_scan(market_with(lore, price=10000), now=1000.0, min_interval=0)
+        assert scan is not None, f"a scan was dropped over lore: {lore!r}"
+
+
+@test("Rolls are recorded raw; quality is only ever derived")
+def _():
+    # Scoring at record time would freeze the item database and the attribute
+    # weights into the log, and both change underneath it.
+    log.record_scan(market_with(["\u00a7a+55 Strength"]), now=1000.0, min_interval=0)
+    observation = only_observation(log.read_rows())
+    assert "identifications" in observation
+    for derived in ("percentile", "quality_weighted", "quality_mean", "coverage"):
+        assert derived not in observation, f"{derived} does not belong in an observation"
+
+
+@test("Derived roll quality scores what it can and skips what it cannot")
+def _():
+    known = next(iter(BY_NAME.values()))
+    name = known["displayName"]
+    stat, spec = next(iter(
+        (n, s) for n, s in __import__("wynn_item_db").rolled_specs(known).items()))
+
+    import wynn_item_db as item_db
+    label = next(lab for lab, forms in item_db._LORE_NAME_FORMS.items() if stat in forms)
+    is_percent = item_db._LORE_NAME_FORMS[label][0] == stat
+    value = spec["max"]
+    lore = [f"\u00a7a{value:+g}{'%' if is_percent else ''} {label.title()}"]
+
+    log.record_scan(market_with(lore, name=name), now=1000.0, min_interval=0)
+    log.reset_dedupe_state()
+    log.record_scan(market_with(lore, name="No Such Item Exists"), now=1100.0, min_interval=0)
+
+    rows = log.read_rows()
+    scored = log.derive_roll_quality(rows, BY_NAME)
+    assert len(scored) == 1, f"only the known item should score: {scored}"
+    assert scored[0]["item_key"] == name.strip().lower()
+    # The best possible value for that stat, so quality is at the top.
+    assert scored[0]["quality_max"] == 1.0, scored[0]
+    assert scored[0]["n_rolled"] >= scored[0]["n_observed"] >= 1
+
+
+@test("Training rows label each listing against its own item's median")
+def _():
+    known = next(iter(BY_NAME.values()))
+    name = known["displayName"]
+    for index, price in enumerate([8000, 10000, 12000]):
+        log.reset_dedupe_state()
+        log.record_scan(market_with(["\u00a7a+55 Strength"], name=name, price=price),
+                        now=1000.0 + index * 100, min_interval=0)
+
+    dataset = log.training_rows(log.read_rows(), BY_NAME)
+    assert len(dataset) == 3, dataset
+    labels = sorted(round(row["log_price_ratio"], 6) for row in dataset)
+    import math as _math
+    assert labels[0] == round(_math.log(0.8), 6), labels
+    assert labels[1] == 0.0, labels
+    assert labels[2] == round(_math.log(1.2), 6), labels
+    assert all(row["rolled"] for row in dataset)
+
+
+@test("An item seen at only one price teaches nothing and is left out")
+def _():
+    # Its own price is the median, so the label is zero by construction, and
+    # feeding that in would teach the model that rolls do not move prices.
+    known = next(iter(BY_NAME.values()))
+    log.record_scan(market_with(["\u00a7a+55 Strength"], name=known["displayName"]),
+                    now=1000.0, min_interval=0)
+    assert log.training_rows(log.read_rows(), BY_NAME) == []
+
+
 if FAILED:
     print(f"\n\033[1;31mMarket recorder tests: {PASSED} passed, {FAILED} failed.\033[0m")
     sys.exit(1)

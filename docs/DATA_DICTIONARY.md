@@ -119,6 +119,30 @@ produces five rows, which is what makes lifetimes measurable.
 | `tier` | string\|null | `mythic`…`normal` |
 | `shiny` | bool | |
 | `listing_fingerprint` | string | `sha1(item_variant + price + amount)`, truncated. Tracks *a listing* across scans without naming who posted it |
+| `identifications` | object\|absent | The roll, as displayed: `{apiKey: value}` read off the listing's lore by `parse_identification_lore()`. **Absent** when nothing was read — which is not the same claim as an empty object, and must never be scored as a bad roll |
+
+**Why the roll is recorded raw.** A Wynncraft item is a family of goods: every
+drop rolls each identification independently, so a price recorded against a name
+alone is an average over that family. `identifications` is the only record of
+which member of the family was actually on the board.
+
+It is stored exactly as displayed, and scored nowhere near here. Turning a rolled
+value into a quality or a percentile needs the item database (which changes on
+game updates) and a set of attribute weights (which the optimizer rewrites on
+every retrain); baking either into the log would freeze them and make an old row
+incomparable with a new one. Scoring is therefore a derivation —
+`derive_roll_quality()` — alongside `listing_lifecycle` and `market_depth`.
+
+**Why the roll is *not* part of `item_variant`.** It is tempting, and it would be
+wrong. `item_variant` is the key a price series is grouped by, and a variant that
+carried the roll would be unique to a single copy: every series would collapse to
+one observation, every item would have no price level, and the roll model has
+nothing left to be a multiple *of*. The decomposition needs both — a coarse
+variant that says what an Idol costs, and a separate roll dimension that says
+what this Idol is worth relative to that. `listing_fingerprint` is left alone for
+the same reason plus one more: the parser's coverage varies with what the lore
+renders, so a fingerprint that included the roll could change between scans for
+one unchanged listing and read as a disappearance, corrupting every lifetime.
 
 ### 3.4 `listing_lifecycle` — **new, derived**
 
@@ -261,7 +285,9 @@ survives a crash mid-write, no database to run. One reader per file
 | Event | Producer | Status |
 |---|---|---|
 | `price_point` | `record_snapshot()`, `scripts/wynn_price_server.py` | existing, needs `item_key` normalisation |
-| `market_scan`, `listing_observation` | `record_scan()`, `scripts/wynn_market_log.py`, fed by `/api/state` | **implemented** |
+| `market_scan`, `listing_observation` | `record_scan()`, `scripts/wynn_market_log.py`, fed by `/api/state` | **implemented**, rolls included |
+| `listing_observation.identifications` | `parse_identification_lore()`, `scripts/wynn_item_db.py` | **implemented** |
+| roll quality / percentile | `derive_roll_quality()`, `scripts/wynn_market_log.py` | **implemented**, derived not recorded |
 | `market_depth`, `listing_lifecycle` | `derive_depth()` / `derive_lifecycles()`, same module | **implemented** |
 | `own_inventory_snapshot` | `wynn.countEmeralds()`, `getInventory()` | available, not persisted |
 | `trade_intent`/`trade_outcome` | `market.buy()` + `/api/bot/market/buy` | guards exist (`confirm`, `maxPrice`, `expectItem`); journal is new |
@@ -295,11 +321,20 @@ survives a crash mid-write, no database to run. One reader per file
    resolution is bounded by how often the market is actually read, which today
    is whenever a dashboard tab polls `/api/state` with a market window open.
    Worth revisiting once the bot scans on a schedule of its own.
-2. Variant granularity: are rolled gear stats worth a separate `item_variant`,
-   or is name+tier+shiny enough? Affects how comparable two asks really are.
+2. ~~Variant granularity: are rolled gear stats worth a separate
+   `item_variant`?~~ **Settled: no.** The roll is recorded as its own field and
+   `item_variant` stays name+tier+shiny, because a variant per roll would leave
+   every price series one observation long. See §3.3. What remains open is
+   whether tier and shiny are the right *coarse* split, which is a different
+   and much smaller question.
 3. Retention of `listing_observation` at 90 days — long enough for seasonality,
    short enough to stay small. Adjustable.
-4. Whether a listing's `price` is per unit or for the lot. Both the buy path and
+4. Whether Wynncraft's lore already states the roll percentage directly. If it
+   does, reading it would beat recovering it from the value and the published
+   range, and would not depend on the item database being current. The parser
+   strips bracketed text today, so if a `[73%]` is in there it is being thrown
+   away. Worth one look at real lore.
+5. Whether a listing's `price` is per unit or for the lot. Both the buy path and
    reconciliation read it as per unit and multiply by `units`, which is right
    for the single-unit listings the market mostly shows and unverified for a
    stack. `classifySlot()` parses a separate `unitPrice` when the lore says
