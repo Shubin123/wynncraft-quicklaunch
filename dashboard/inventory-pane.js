@@ -272,7 +272,9 @@
       loreNode.textContent = line;
     }
     const meta = element('div', 'wynn-inv-tip-meta', state.tooltip);
-    meta.textContent = `${slot.name} · slot ${slot.slot}${slot.count > 1 ? ` · x${slot.count}` : ''}`;
+    const tags = (slot.typeTags || []).join(', ');
+    meta.textContent = [slot.itemType || 'item', tags, slot.tier, slot.name, `slot ${slot.slot}`, slot.count > 1 ? `x${slot.count}` : '']
+      .filter(Boolean).join(' · ');
 
     state.tooltip.style.display = 'block';
     const rect = state.tooltip.getBoundingClientRect();

@@ -184,30 +184,13 @@ class BotManager extends EventEmitter {
   }
 
   /**
-   * Idle Window / Pane Checker: Every 10s, if the bot is in WORLD state and
-   * has an unexpected inventory/container open (i.e. a pane screen appeared
-   * while the bot is stationary and not in character selection), close it with ESC.
+   * Compatibility hook only. User-opened Auction House, chest, inventory, and
+   * menu windows must never be closed by an idle timer.
    */
   startIdleWindowChecker() {
     this.stopIdleWindowChecker();
-    this.idleWindowInterval = setInterval(() => {
-      if (!this.bot) return;
-      const state = this.bot.wynn?.worldState;
-      // Only close stray windows in WORLD state — not during lobby/selection
-      if (state !== 'WORLD') return;
-      const win = this.bot.currentWindow;
-      if (win && win.id !== 0) {
-        // There's an open container while we're in-world and idle — close it
-        try {
-          this.bot.closeWindow(win);
-          this.addLog('UI', `[Idle Checker] Closed stray open window: "${win.title || 'unknown'}" (id ${win.id})`);
-          this.broadcastSSE('log', { category: 'UI', message: `[Idle Checker] Closed stray pane: "${win.title || 'unknown'}"` });
-        } catch (e) {
-          this.addLog('ERROR', `[Idle Checker] Failed to close window: ${e.message}`);
-        }
-      }
-    }, 10000);
-    this.addLog('STATE', '[Idle Checker] Idle window/pane checker started (10s interval).');
+    this.addLog('STATE', '[Idle Checker] Automatic window closing is disabled.');
+    return { enabled: false };
   }
 
   stopIdleWindowChecker() {
@@ -491,7 +474,9 @@ class BotManager extends EventEmitter {
         // Anti-AFK is opt-in. Do not start it merely because the bot spawned;
         // the dashboard/API toggle is the only thing that enables it.
         if (this.antiAfkEnabled) this.startAntiAfk();
-        this.startIdleWindowChecker();
+        // User-opened containers (Auction House, inventory, chests, menus)
+        // must remain open. The old idle checker closed every non-zero window
+        // after ten seconds, so it is intentionally not started here.
       });
 
       this.bot.on('market:open', () => {

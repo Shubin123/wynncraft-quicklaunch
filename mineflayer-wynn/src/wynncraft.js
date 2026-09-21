@@ -1,4 +1,5 @@
 const http = require('http');
+const { classifyItemTags, inferTier } = require('./item_metadata');
 
 /**
  * Strips Minecraft formatting codes (§a, §l, §x etc.) from strings.
@@ -623,6 +624,8 @@ function wynncraftPlugin(bot, options = {}) {
     const customName = extractCleanText(item.customName);
     const rawLore = item.customLore || [];
     const lore = Array.isArray(rawLore) ? rawLore.map(l => extractCleanText(l)).filter(Boolean) : [];
+    const tier = inferTier(customName, lore);
+    const metadata = classifyItemTags(name, customName, lore, tier);
     const isCharacterSlot = !isPlayerInv && CHARACTER_SLOTS.includes(idx) && !isGlassPane;
 
     const gateMatch = customName.match(/^(?:([A-Z]{2,3})\s*\|\s*)?(?:World|WC)\s*(\d+)/i);
@@ -652,7 +655,10 @@ function wynncraftPlugin(bot, options = {}) {
       name,
       count: item.count || 1,
       customName,
+      displayName: customName || name,
       lore,
+      tier,
+      ...metadata,
       isGlassPane,
       isCharacterSlot,
       isWorldGate,
