@@ -72,8 +72,13 @@ try {
 
 const { ChatInsightsEngine } = require('./chat_insights');
 const { goals } = require('mineflayer-pathfinder');
+const { handlePriceRoute } = require('./routes/price_routes');
+const { serveStatic } = require('./routes/static_routes');
 
-const PORT = parseInt(process.env.WYNN_BOT_PORT || '8124', 10);
+// The bot and dashboard now share this process. Keep WYNN_BOT_PORT as a
+// compatibility override, but make the unified service's documented port
+// the default.
+const PORT = parseInt(process.env.WYNN_PORT || process.env.WYNN_BOT_PORT || process.env.WYNN_DASHBOARD_PORT || '8123', 10);
 // Loopback by default: this API has no authentication and can move the bot,
 // spend emeralds and change which account it logs in as. The dashboard it
 // serves is localhost-only too. Set WYNN_BOT_HOST to expose it deliberately.
@@ -1281,6 +1286,8 @@ const server = http.createServer(async (req, res) => {
 
   // Routes
   if (req.method === 'GET') {
+    if (await handlePriceRoute(req, res, parsedUrl)) return;
+
     if (pathname === '/api/bot/status') {
       return json(200, manager.getStatus());
     }
@@ -1383,6 +1390,10 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+  }
+
+  if (req.method === 'HEAD') {
+    return serveStatic(req, res, pathname);
   }
 
   if (req.method === 'POST') {
@@ -1498,6 +1509,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res, pathname);
   json(404, { error: 'Not found' });
 });
 

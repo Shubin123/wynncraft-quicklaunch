@@ -1,15 +1,14 @@
 /**
  * Integration Tests for Wynncraft Dashboard and Bot Server
  *
- * Verifies reverse-proxying, REST endpoints, static file serving, and CORS.
+ * Verifies the unified Node service, REST endpoints, static file serving, and CORS.
  */
 const assert = require('assert');
 const http = require('http');
 
 const BASE_URL = 'http://localhost:8123';
-const BOT_URL = 'http://localhost:8124';
 
-console.log('\x1b[1;34m=== [INTEGRATION TESTS] Testing Services & Reverse Proxy ===\x1b[0m\n');
+console.log('\x1b[1;34m=== [INTEGRATION TESTS] Testing Unified Node Service ===\x1b[0m\n');
 
 let passed = 0;
 let total = 0;
@@ -156,14 +155,14 @@ async function runTests() {
     assert.ok(Array.isArray(res.json.messages));
   });
 
-  // 10. Direct Bot Server parity
-  await testAsync('Direct Bot Server on :8124 returns identical status schema as proxy :8123', async () => {
-    const directRes = await request(`${BOT_URL}/api/bot/status`);
-    const proxiedRes = await request(`${BASE_URL}/api/bot/status`);
-    assert.strictEqual(directRes.statusCode, 200);
-    assert.strictEqual(proxiedRes.statusCode, 200);
-    assert.strictEqual(directRes.json.username, proxiedRes.json.username);
-    assert.strictEqual(directRes.json.prism.instance, proxiedRes.json.prism.instance);
+  // 10. Unified service parity: bot and dashboard surfaces share one listener.
+  await testAsync('One Node service serves both bot API and dashboard data surfaces', async () => {
+    const botRes = await request(`${BASE_URL}/api/bot/status`);
+    const historyRes = await request(`${BASE_URL}/api/history_local?item=Spring`);
+    assert.strictEqual(botRes.statusCode, 200);
+    assert.strictEqual(historyRes.statusCode, 200);
+    assert.strictEqual(typeof botRes.json.connected, 'boolean');
+    assert.ok(Array.isArray(historyRes.json.points));
   });
 
   // 11. Proxied GET /api/bot/window

@@ -8,7 +8,7 @@
     "start": "bash scripts/start_all.sh",
     "stop": "bash scripts/stop_all.sh",
     "bot": "node scripts/wynn_bot_server.js",
-    "dashboard": "python3 scripts/wynn_price_server.py",
+    "dashboard": "node scripts/wynn_bot_server.js",
     "textures": "python3 scripts/apply_wynn_textures.py",
     "mineflayer:check": "node scripts/mineflayer/check.mjs",
     "preflight": "bash scripts/preflight.sh --node",
