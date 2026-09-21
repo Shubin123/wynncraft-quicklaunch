@@ -1997,13 +1997,13 @@
     const resEl = document.getElementById('price-result');
     resEl.textContent = 'Searching trade market...';
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/price?item=${encodeURIComponent(q)}`);
       const data = await res.json();
-      if (data && data.results && data.results.length > 0) {
-        const item = data.results[0];
-        resEl.textContent = `${item.name}: ${item.price_formatted || item.price + ' emeralds'} (Lowest)`;
+      if (res.ok && data && data.lowest_price !== undefined) {
+        const estimate = data.average_price ?? data.p50_price ?? data.lowest_price;
+        resEl.textContent = `${q}: lowest ${data.lowest_price}e · typical ${estimate}e`;
       } else {
-        resEl.textContent = 'No listings found.';
+        resEl.textContent = data.error || 'No price data found.';
       }
     } catch (e) {
       resEl.textContent = 'Price lookup failed.';
