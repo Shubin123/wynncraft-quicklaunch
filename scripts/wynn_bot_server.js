@@ -1515,6 +1515,10 @@ const server = http.createServer(async (req, res) => {
 
 process.on('uncaughtException', (err) => {
   console.error('[WynnBot Server] Uncaught exception:', err.message);
+  if (err.code === 'EADDRINUSE') {
+    console.error('[WynnBot Server] Port is already in use; exiting so the foreground shell reports failure.');
+    process.exit(1);
+  }
 });
 
 process.on('unhandledRejection', (reason) => {
