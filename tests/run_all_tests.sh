@@ -78,10 +78,15 @@ node "$SCRIPT_DIR/test_protocol_harness.js"
 node "$SCRIPT_DIR/test_trades_api.js"
 
 # 15. Phase 1 market recorder: schema, dedupe, derived liquidity
+node "$SCRIPT_DIR/test_market_log.js"
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"
 
 # 16. Roll model: per-attribute RNG, percentile, and roll-aware pricing
+node "$SCRIPT_DIR/test_roll_model.js"
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_roll_model.py"
+
+# 16b. Node price cache foundations: history and regression primitives
+node "$SCRIPT_DIR/test_price_cache.js"
 
 # 17. Training pipeline: runs, labels its calibration, beats the roll-blind model
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_training.py"
