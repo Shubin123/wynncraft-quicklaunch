@@ -7,6 +7,7 @@ function json(res, status, body, cacheHit = false) {
   const payload = Buffer.from(JSON.stringify(output));
   res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': payload.length });
   res.end(payload);
+  return true;
 }
 
 function param(url, key, fallback = '') { return url.searchParams.get(key) ?? fallback; }
