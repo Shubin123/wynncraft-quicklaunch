@@ -1,6 +1,7 @@
 'use strict';
 
 const cache = require('../lib/price_cache');
+const { estimateItem, optimizeSlots } = require('../lib/optimizer');
 
 function json(res, status, body, cacheHit = false) {
   const output = cacheHit && body && typeof body === 'object' ? { ...body, _cached: true } : body;
@@ -50,7 +51,28 @@ async function handlePriceRoute(req, res, url) {
     const marginRaw = url.searchParams.get('margin'); const margin = marginRaw == null || marginRaw === '' ? null : Number(marginRaw);
     return json(res, 200, { item, state: cache.recordOutcome(item, param(url, 'sold', 'false').toLowerCase() === 'true', margin) });
   }
-  if (pathname === '/api/optimize') return json(res, 501, { error: 'optimize endpoint is pending the Node trade-engine port' });
+  if (pathname === '/api/optimize') {
+    const capital = Number(param(url, 'capital', '32768'));
+    const slots = Number(param(url, 'slots', '6'));
+    if (!Number.isFinite(capital) || capital < 0 || !Number.isInteger(slots) || slots < 1) {
+      return json(res, 400, { error: 'capital must be a non-negative number and slots a positive integer' });
+    }
+    const items = candidates(url).length ? candidates(url) : cache.loadWatchlist();
+    if (!items.length) return json(res, 400, { error: 'no candidate items - pass ?items=a,b,c or populate the watchlist first' });
+    const estimates = [];
+    const skipped = [];
+    for (const item of items) {
+      const [status, body] = await cache.getCachedPrice(item);
+      if (status !== 200) { skipped.push({ item, reason: body?.error || `status ${status}` }); continue; }
+      const estimate = estimateItem(item, body, capital);
+      if (!estimate) { skipped.push({ item, reason: 'incomplete price data' }); continue; }
+      estimates.push(estimate);
+    }
+    const result = optimizeSlots(estimates, capital, slots);
+    result.skipped = skipped;
+    result.candidates_considered = estimates.length;
+    return json(res, 200, result);
+  }
   return false;
 }
 

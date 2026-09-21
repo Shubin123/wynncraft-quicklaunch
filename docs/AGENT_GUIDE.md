@@ -13,14 +13,11 @@ flowchart TD
         Agent["AI Agent / HTTP Client"]
     end
 
-    subgraph Proxy ["Proxy & Static Server (:8123)"]
-        PS["wynn_price_server.py (ThreadingHTTPServer)"]
+    subgraph Unified ["Unified Node Service (:8123)"]
+        PS["wynn_bot_server.js (Node.js HTTP server)"]
         Static["dashboard/*.html"]
         PriceAPI["/api/price (Wynnventory Proxy)"]
-    end
-
-    subgraph BotService ["Bot Service Layer (:8124)"]
-        BS["wynn_bot_server.js (Node.js)"]
+        BS["BotManager & Bot API"]
         SSE["/api/bot/events (SSE Stream)"]
         State["BotManager (State & Event Loop)"]
     end
@@ -42,7 +39,6 @@ flowchart TD
     Agent -->|HTTP / JSON :8123| PS
     PS -->|Serve Static| Static
     PS -->|Query Market| PriceAPI
-    PS -->|Reverse Proxy /api/bot/*| BS
     BS --> State
     State --> MF
     MF --> Pathfinder
@@ -58,12 +54,11 @@ flowchart TD
 
 | Service | Port | Host | Protocol | Managed By |
 |---|---|---|---|---|
-| Main Dashboard & Reverse Proxy | `8123` | `localhost` | HTTP / JSON | `scripts/wynn_price_server.py` |
-| Bot Control & Events API | `8124` | `localhost` | HTTP / SSE | `scripts/wynn_bot_server.js` |
+| Unified Dashboard, Price, Trade & Bot API | `8123` | `localhost` | HTTP / SSE / JSON | `scripts/wynn_bot_server.js` |
 | 3D Web Visualizer | `3000` | `localhost` | HTTP / WS | `prismarine-viewer` |
 
 > [!NOTE]
-> All `/api/bot/*` requests sent to `http://localhost:8123` are automatically forwarded to `http://localhost:8124`. Agents only need to speak to `http://localhost:8123`.
+> All dashboard, price, trade, bot, SSE, and static requests are handled directly by the one Node process on `http://localhost:8123`.
 
 ---
 
@@ -427,7 +422,7 @@ inside the game on a second account - without the web server switching with
 it. It is stored outside Prism's files and changing it affects the next
 connect, never a running session.
 
-### Trade Market (`/api/bot/market*`, port 8124 or proxied via 8123)
+### Trade Market (`/api/bot/market*`, port 8123)
 
 | Method | Path | Body | Effect |
 |---|---|---|---|
@@ -555,8 +550,8 @@ curl -s "http://localhost:8123/api/price?item=Mithril%20Leggings" | jq .
 │   │   ├── GETTING_STARTED.md            # Human guide
 │   │   └── AGENT_GUIDE.md                # This agent specification
 │   └── scripts/
-│       ├── wynn_price_server.py          # Port 8123 HTTP server + reverse proxy
-│       ├── wynn_bot_server.js            # Port 8124 Node.js Bot API service
+│       ├── wynn_bot_server.js            # Unified port 8123 Node.js service
+│       ├── wynn_price_server.py          # Legacy offline Python reference/tests
 │       └── launch_mineflayer.sh          # Terminal bot launcher
 └── mineflayer-wynn/                      # Core Node.js library
     ├── bin/mineflayer-wynn.js            # CLI executable

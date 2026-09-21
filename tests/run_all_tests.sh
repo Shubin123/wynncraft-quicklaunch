@@ -89,6 +89,7 @@ node "$SCRIPT_DIR/test_roll_model.js"
 
 # 16b. Node price cache foundations: history and regression primitives
 node "$SCRIPT_DIR/test_price_cache.js"
+node "$SCRIPT_DIR/test_optimizer.js"
 
 # 17. Training pipeline: runs, labels its calibration, beats the roll-blind model
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_training.py"

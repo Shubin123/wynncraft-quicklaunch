@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Local proxy + static server for the Wynncraft price dashboard.
+"""Legacy standalone price/trade API for offline compatibility and tests.
+
+The supported runtime is the unified Node service in wynn_bot_server.js on
+port 8123. This module remains as a Python reference/training harness, but it
+never starts or proxies the bot server.
 
 Keeps the Wynnventory API key server-side (never sent to the browser) and
 gives the static page a same-origin /api/price endpoint to call, avoiding
@@ -427,7 +431,7 @@ def optimize_slots(estimates: list[dict], capital: float, slots: int) -> dict:
 # and so tests can point the dashboard at a stub (or at nothing at all).
 BOT_SERVER_URL = os.environ.get(
     "WYNN_BOT_SERVER_URL",
-    f"http://127.0.0.1:{os.environ.get('WYNN_BOT_PORT', '8124')}"
+    f"http://127.0.0.1:{os.environ.get('WYNN_PORT', os.environ.get('WYNN_BOT_PORT', '8123'))}"
 ).rstrip("/")
 
 
@@ -1086,17 +1090,6 @@ if __name__ == "__main__":
     key_present = load_api_key() is not None
     print(f"Serving {DASHBOARD_DIR} on http://localhost:{PORT}")
     print(f"API key configured: {key_present}" + ("" if key_present else f" (create {KEY_FILE} or set WYNNVENTORY_API_KEY)"))
-
-    # Ensure WynnBot API service is running on 8124
-    bot_server_script = Path(__file__).resolve().parent / "wynn_bot_server.js"
-    # Tests and read-only runs set WYNN_NO_AUTOSPAWN so this never starts a bot.
-    if bot_server_script.is_file() and os.environ.get("WYNN_NO_AUTOSPAWN") != "1":
-        try:
-            with urllib.request.urlopen(f"{BOT_SERVER_URL}/api/bot/status", timeout=1):
-                pass
-        except Exception:
-            print("Spawning WynnBot background service (port 8124)...")
-            subprocess.Popen(["node", str(bot_server_script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     threading.Thread(target=watchlist_poll_loop, daemon=True).start()
     ThreadingHTTPServer(("localhost", PORT), Handler).serve_forever()

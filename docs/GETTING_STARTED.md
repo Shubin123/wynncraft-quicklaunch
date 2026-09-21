@@ -42,16 +42,11 @@ This project connects three key layers:
 
 The easiest way to use the bot is through the unified web dashboard.
 
-### Step 1: Ensure the Server is Running
-The local dashboard server runs as a background user service:
+### Step 1: Ensure the Unified Server is Running
+Run the single service in a visible foreground terminal:
 ```bash
-systemctl --user status wynn-price-dashboard.service
-```
-If not running, start it or run manually:
-```bash
-systemctl --user start wynn-price-dashboard.service
-# Or manually in a terminal:
-python3 scripts/wynn_price_server.py
+npm start
+# or: bash scripts/start_all.sh
 ```
 
 ### Step 2: Open the Web App
@@ -171,7 +166,7 @@ mineflayer-wynn run --viewer 3000 --anti-afk
 
 #### Port Conflicts
 - Default Price Dashboard & Bot Proxy: `8123` (configure via `WYNN_DASHBOARD_PORT`).
-- Default Bot Server: `8124` (configure via `WYNN_BOT_PORT`).
+- Unified Dashboard and Bot Server: `8123` (configure via `WYNN_PORT`).
 - Default 3D Web Visualizer: `3000` (configure via `WYNN_VIEWER_PORT`).
 
 #### Wynncraft Anti-Cheat / Hades

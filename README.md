@@ -56,14 +56,15 @@ This universal script will:
 
 ### Running the Services
 
-Start both the Price Dashboard (port 8123) and Bot Controller (port 8124) with:
+Start the unified dashboard, price API, trade tools, and bot controller in one
+foreground Node.js process on port 8123:
 
 ```bash
-# Start background services
+# Start the unified foreground service
 npm start
 # or: bash scripts/start_all.sh
 
-# Stop background services
+# Stop the unified service from another shell
 npm stop
 # or: bash scripts/stop_all.sh
 ```
@@ -107,7 +108,7 @@ browse the market in-game.
 Wynnventory's API requires a developer key from their team (Discord:
 `@Aruloci` / `@Sirop`), and their API doesn't send CORS headers, so a plain
 static page can't call it directly from the browser. Instead,
-`scripts/wynn_price_server.py` runs a small local proxy: it holds the API key
+The unified Node service in `scripts/wynn_bot_server.js` holds the API key
 server-side and gives the page a same-origin `/api/price` endpoint to call.
 **The key never reaches the browser or gets committed to this repo.**
 
@@ -124,7 +125,7 @@ chmod 600 ~/.config/wynn-dashboard/wynnventory.key
 Then run:
 
 ```bash
-python3 scripts/wynn_price_server.py
+npm start
 # then visit http://localhost:8123
 ```
 
@@ -191,7 +192,7 @@ do the buying and listing yourself, in the real Minecraft client.
 your **Prism Launcher** Wynncraft instance and Microsoft account session:
 
 - **Web UI URL**: [http://localhost:8123/bot.html](http://localhost:8123/bot.html)
-  (served directly through `scripts/wynn_price_server.py`).
+  (served directly through the unified Node service).
 - **Prism session linking**: Automatically detects and uses the active Microsoft
   account (`boredfrom0`) cached in `~/.local/share/PrismLauncher/accounts.json`,
   bypassing web OAuth prompts when the token is valid.

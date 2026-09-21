@@ -111,7 +111,7 @@ program
     // Quicklaunch Proxy Check
     const quicklaunchRunning = await prism.checkQuicklaunchServer(8123);
     console.log(`\n\x1b[1mQuicklaunch Price Proxy (:8123):\x1b[0m`);
-    console.log(`  Status:             ${quicklaunchRunning ? '\x1b[32mOnline (Running)\x1b[0m' : '\x1b[90mOffline (Run "python3 ~/wynncraft-quicklaunch/scripts/wynn_price_server.py" to start)\x1b[0m'}`);
+    console.log(`  Status:             ${quicklaunchRunning ? '\x1b[32mOnline (Running)\x1b[0m' : '\x1b[90mOffline (Run "npm start" from wynncraft-quicklaunch to start)\x1b[0m'}`);
     console.log(``);
   });
 
