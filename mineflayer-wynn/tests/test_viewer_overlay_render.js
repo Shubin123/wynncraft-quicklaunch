@@ -134,7 +134,7 @@ function boot({ position = { x: 0, y: 64, z: 0 }, ok = true } = {}) {
     head,
     body,
     createElement: makeNode,
-    currentScript: { src: 'http://localhost:3000/wynn-viewer-overlay.js?api=http%3A%2F%2Flocalhost%3A8124' },
+    currentScript: { src: 'http://localhost:3000/wynn-viewer-overlay.js?api=http%3A%2F%2Flocalhost%3A8123' },
     referrer: 'http://localhost:8123/bot.html',
     events: {},
     addEventListener: (type, handler) => { (document.events[type] = document.events[type] || []).push(handler); }
@@ -325,7 +325,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
   await test('The button polls the bot position and reports when it is unavailable', async () => {
     const live = boot({ position: { x: 5, y: 64, z: 5 } });
     await flush();
-    assert.ok(live.fetches.some(url => url === 'http://localhost:8124/api/bot/position'),
+    assert.ok(live.fetches.some(url => url === 'http://localhost:8123/api/bot/position'),
       `expected a poll of the bot position endpoint, saw ${live.fetches}`);
     assert.strictEqual(live.button.disabled, false);
     assert.ok(live.intervals.some(entry => entry.ms === 250), 'position is polled on an interval');

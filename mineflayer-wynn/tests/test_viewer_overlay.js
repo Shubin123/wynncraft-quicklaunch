@@ -77,20 +77,20 @@ test('A higher alpha follows harder, and no bot position means no motion', () =>
 
 test('The bot API base comes from the script tag, with a sane fallback', () => {
   assert.strictEqual(
-    overlay.parseApiBase('http://localhost:3000/wynn-viewer-overlay.js?api=http%3A%2F%2Flocalhost%3A8124',
+    overlay.parseApiBase('http://localhost:3000/wynn-viewer-overlay.js?api=http%3A%2F%2Flocalhost%3A8123',
       'http://localhost:3000/'),
-    'http://localhost:8124'
+    'http://localhost:8123'
   );
   assert.strictEqual(
     overlay.parseApiBase('http://box.local:3000/wynn-viewer-overlay.js?api=http://box.local:9001/',
       'http://box.local:3000/'),
     'http://box.local:9001', 'a trailing slash must not double up in request paths'
   );
-  assert.strictEqual(
+    assert.strictEqual(
     overlay.parseApiBase('http://box.local:3000/wynn-viewer-overlay.js', 'http://box.local:3000/'),
-    'http://box.local:8124', 'without the query it falls back to the default bot port on the same host'
+    'http://box.local:8123', 'without the query it falls back to the unified service port on the same host'
   );
-  assert.strictEqual(overlay.parseApiBase('', ''), 'http://localhost:8124');
+  assert.strictEqual(overlay.parseApiBase('', ''), 'http://localhost:8123');
 });
 
 test('Only the dashboard toggle message is acted on', () => {
@@ -109,7 +109,7 @@ test('Installing the overlay adds exactly one script tag and is idempotent', () 
   const original = fs.readFileSync(indexPath, 'utf8');
 
   try {
-    const first = installTrackingOverlay('http://localhost:8124');
+    const first = installTrackingOverlay('http://localhost:8123');
     assert.ok(first.installed, `install failed: ${first.reason}`);
     assert.ok(fs.existsSync(path.join(publicDir, 'wynn-viewer-overlay.js')), 'the overlay file must be copied');
 
@@ -118,9 +118,9 @@ test('Installing the overlay adds exactly one script tag and is idempotent', () 
     assert.strictEqual(count(afterFirst), 1, 'exactly one tag after the first install');
     assert.ok(afterFirst.indexOf('wynn-viewer-overlay.js') < afterFirst.indexOf('src="index.js"'),
       'the overlay must load BEFORE the bundle so it can wrap the three constructors');
-    assert.ok(afterFirst.includes('api=http%3A%2F%2Flocalhost%3A8124'), 'the api base is passed on the tag');
+    assert.ok(afterFirst.includes('api=http%3A%2F%2Flocalhost%3A8123'), 'the unified api base is passed on the tag');
 
-    installTrackingOverlay('http://localhost:8124');
+    installTrackingOverlay('http://localhost:8123');
     installTrackingOverlay('http://localhost:9999');
     const afterThird = fs.readFileSync(indexPath, 'utf8');
     assert.strictEqual(count(afterThird), 1, 'repeat installs must not stack tags');

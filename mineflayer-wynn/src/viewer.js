@@ -137,8 +137,10 @@ function attachViewer(bot, options = {}) {
         `(${exact}/${total} block states exact, ${byName} by name, ${substituted} substituted)`);
     }
 
+    // The dashboard and bot now share one Node service. Keep the explicit
+    // option for embedders, but make the unified service port the default.
     const botApiBase = options.botApiBase ||
-      `http://localhost:${process.env.WYNN_BOT_PORT || 8124}`;
+      `http://localhost:${process.env.WYNN_PORT || process.env.WYNN_BOT_PORT || process.env.WYNN_DASHBOARD_PORT || 8123}`;
     const overlay = installTrackingOverlay(botApiBase);
     if (!overlay.installed && overlay.reason !== 'disabled') {
       console.warn(`\x1b[33m[Viewer Warning]\x1b[0m Character tracking overlay not installed: ${overlay.reason}`);

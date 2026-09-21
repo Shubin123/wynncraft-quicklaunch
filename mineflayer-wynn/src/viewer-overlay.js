@@ -47,9 +47,9 @@
     }
     try {
       const origin = new URL(fallbackOrigin);
-      return `${origin.protocol}//${origin.hostname}:8124`;
+      return `${origin.protocol}//${origin.hostname}:8123`;
     } catch (err) {
-      return 'http://localhost:8124';
+      return 'http://localhost:8123';
     }
   }
 
