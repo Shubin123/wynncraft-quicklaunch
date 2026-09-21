@@ -17,8 +17,13 @@ function test(name, fn) {
 
 test('rejects empty or malformed recordings', () => {
   assert.strictEqual(paths.savePath('', [{ x: 0, y: 1, z: 2 }]).ok, false);
-  assert.strictEqual(paths.savePath('short', [{ x: 0, y: 1, z: 2 }]).ok, false);
   assert.strictEqual(paths.savePath('bad', [{ x: 0, y: 1, z: 2 }, { x: 'x', y: 1, z: 2 }]).ok, false);
+});
+test('saves a single finalized position', () => {
+  const result = paths.savePath('Detlas entrance', [{ x: 1.25, y: 67, z: -4.5 }]);
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.path.points, [{ x: 1.25, y: 67, z: -4.5 }]);
+  paths.deletePath('Detlas entrance');
 });
 test('saves, replaces, lists, and deletes a recorded path', () => {
   const points = [{ x: 0, y: 64, z: 0 }, { x: 5, y: 64, z: 0 }, { x: 5, y: 64, z: 5 }];
@@ -31,5 +36,5 @@ test('saves, replaces, lists, and deletes a recorded path', () => {
   assert.strictEqual(paths.listPaths().length, 0);
 });
 
-console.log(`\n\x1b[1mManual path tests result: ${passed}/2 passed\x1b[0m`);
-if (passed !== 2) process.exitCode = 1;
+console.log(`\n\x1b[1mManual path tests result: ${passed}/3 passed\x1b[0m`);
+if (passed !== 3) process.exitCode = 1;

@@ -667,14 +667,14 @@
             <div id="manual-save-row" style="display:none;gap:6px;align-items:end;flex-wrap:wrap;margin-top:7px">
               <input type="text" id="manual-path-name" placeholder="Path name" style="flex:1;min-width:140px" />
               <input type="text" id="manual-path-description" placeholder="Description" style="flex:1;min-width:180px" />
-              <button class="small" onclick="stopManualControl(true)">Exit &amp; Save Path</button>
+              <button class="small" onclick="stopManualControl(true)">Exit &amp; Save Position</button>
             </div>
             <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;margin-top:7px">
               <select id="manual-path-select" style="flex:1;min-width:180px"><option value="">No saved paths</option></select>
               <button class="secondary small" onclick="runSavedManualPath()">Run saved path</button>
               <button class="danger small" onclick="deleteSavedManualPath()">Delete path</button>
             </div>
-            <div style="font-size:0.72rem;color:var(--muted);margin-top:5px">When active, focus this page and use W/A/S/D, Space, Shift, and mouse capture. Exit without saving discards the recording.</div>
+            <div style="font-size:0.72rem;color:var(--muted);margin-top:5px">When active, focus this page and use W/A/S/D, Space, Shift, and mouse capture. Save records the final live position; sampled movement points are retained when available.</div>
           </div>
         </div>
       </div>

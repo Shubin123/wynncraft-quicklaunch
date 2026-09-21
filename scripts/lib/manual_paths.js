@@ -23,7 +23,7 @@ function listPaths() { return readPaths(); }
 function savePath(name, points, description = '') {
   const cleanName = String(name || '').trim();
   if (!cleanName) return { ok: false, error: 'path name is required' };
-  if (!Array.isArray(points) || points.length < 2 || !points.every(validPoint)) return { ok: false, error: 'a path needs at least two valid recorded positions' };
+  if (!Array.isArray(points) || points.length < 1 || !points.every(validPoint)) return { ok: false, error: 'a saved position needs at least one valid recorded position' };
   const pathData = { name: cleanName, description: String(description || ''), points: points.map((p) => ({ x: Number(p.x), y: Number(p.y), z: Number(p.z) })), savedAt: new Date().toISOString() };
   const paths = readPaths().filter((item) => item.name.toLowerCase() !== cleanName.toLowerCase());
   paths.push(pathData); writePaths(paths); return { ok: true, path: pathData, paths };

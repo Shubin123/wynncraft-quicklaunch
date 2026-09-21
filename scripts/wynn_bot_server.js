@@ -327,7 +327,7 @@ class BotManager extends EventEmitter {
       }
     };
 
-    if (this.bot && this.status === 'connected') {
+    if (this.bot && this.bot.entity) {
       const pos = this.bot.entity?.position;
       if (pos) {
         botState.position = {
@@ -957,8 +957,8 @@ class BotManager extends EventEmitter {
    */
   getPosition() {
     const pos = this.bot?.entity?.position;
-    if (!this.bot || this.status !== 'connected' || !pos) {
-      return { ok: false, error: 'Bot is not connected', position: null };
+    if (!this.bot || !pos) {
+      return { ok: false, error: 'Bot position is not available until it has spawned into a world', position: null };
     }
     return {
       ok: true,
@@ -1186,11 +1186,26 @@ class BotManager extends EventEmitter {
     return { ok: true, active: false, points: this.manualPoints.length };
   }
 
+  captureManualPosition() {
+    const position = this.currentPosition();
+    if (!position) return null;
+    const previous = this.manualPoints[this.manualPoints.length - 1];
+    if (!previous || Math.hypot(position.x - previous.x, position.y - previous.y, position.z - previous.z) >= 0.01) {
+      this.manualPoints.push(position);
+      this.broadcastSSE('manual_position', position);
+    }
+    return position;
+  }
+
   saveManualPath(name, description = '') {
+    this.captureManualPosition();
     return manualPathStore.savePath(name, this.manualPoints, description);
   }
 
   exitManualControl({ save = false, name = '', description = '' } = {}) {
+    // The sampler is secondary. Always take one final live position so a
+    // quick stop after movement still saves the place.
+    if (save) this.captureManualPosition();
     const points = this.manualPoints.length;
     const saved = save ? this.saveManualPath(name, description) : null;
     if (save && !saved.ok) return saved;
