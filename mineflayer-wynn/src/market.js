@@ -1,6 +1,7 @@
 const { goals } = require('mineflayer-pathfinder');
 const { extractCleanText } = require('./wynncraft');
 const { createJournal, reconcileIntent, expectedSpend } = require('./journal');
+const { classifyItemTags, inferTier } = require('./item_metadata');
 
 /**
  * Trade Market (auction house) automation for Wynncraft.
@@ -86,30 +87,6 @@ function formatEmeralds(amount) {
 }
 
 /**
- * Gives the browser a useful, stable type label even though the Trade Market
- * GUI only exposes a Minecraft material, custom name, and lore. Wynncraft's
- * named items (for example Pure and Depressing Stick) commonly use generic
- * materials, so the display name and lore must be considered together.
- */
-function classifyItemTags(name, customName, lore, tier = null) {
-  const material = String(name || '').toLowerCase();
-  const display = String(customName || '').trim();
-  const text = `${material} ${display} ${(lore || []).join(' ')}`.toLowerCase();
-  const tags = [];
-  const add = (tag) => { if (tag && !tags.includes(tag)) tags.push(tag); };
-  const knownWeapon = /^(pure|depressing\s+(stick|bow|dagger|spear|wand|relik))$/i.test(display);
-  if (knownWeapon || /(sword|bow|dagger|spear|wand|relik|weapon|stick)/i.test(text)) add('weapon');
-  if (/(helmet|chestplate|leggings|boots|armor|armour)/i.test(text)) add('armor');
-  if (/(ring|bracelet|necklace|accessory)/i.test(text)) add('accessory');
-  if (/(tome|guild|champion|loot|emerald|ingredient|relic|material)/i.test(text)) add('item');
-  if (/shiny/i.test(text)) add('shiny');
-  if (tier) add(String(tier).toLowerCase());
-  if (!tags.includes('weapon') && !tags.includes('armor') && !tags.includes('accessory')) add('misc');
-  const type = tags.find((tag) => ['weapon', 'armor', 'accessory', 'item', 'misc'].includes(tag)) || 'misc';
-  return { itemType: type, typeTags: tags };
-}
-
-/**
  * Classifies one container slot as a market control, a listing, or filler.
  */
 function classifySlot(item, slot) {
@@ -156,7 +133,7 @@ function classifySlot(item, slot) {
     const sellerMatch = sellerLine ? sellerLine.match(/(?:seller|listed by|owner)\s*[:\-]?\s*(\S+)/i) : null;
     const unitPrice = lore.find(line => /each|per\s*unit/i.test(line));
 
-    const tier = (loreText.match(/\b(mythic|fabled|legendary|rare|unique|set|normal)\b/i) || [])[1] || null;
+    const tier = inferTier(customName, lore);
     const tags = classifyItemTags(name, customName, lore, tier);
     return {
       ...base,
