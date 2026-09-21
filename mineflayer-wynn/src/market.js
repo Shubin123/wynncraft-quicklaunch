@@ -415,6 +415,51 @@ function attachMarket(bot, options = {}) {
   };
 
   /**
+   * Read-only shortlist builder for the open Trade Market board. It never
+   * clicks a pane: callers can use it to find matching listings, then choose
+   * a specific listing through the existing confirmed buy path.
+   */
+  market.inspect = function (opts = {}) {
+    const scan = market.scan();
+    if (!scan.open || !scan.isMarket) {
+      return { ok: false, error: 'Open a Trade Market window before inspecting listings', matches: [] };
+    }
+    const query = String(opts.query || '').trim().toLowerCase();
+    const type = String(opts.type || '').trim().toLowerCase();
+    const tier = String(opts.tier || '').trim().toLowerCase();
+    const minPrice = opts.minPrice === undefined || opts.minPrice === '' ? null : Number(opts.minPrice);
+    const maxPrice = opts.maxPrice === undefined || opts.maxPrice === '' ? null : Number(opts.maxPrice);
+    if ((minPrice !== null && (!Number.isFinite(minPrice) || minPrice < 0)) ||
+        (maxPrice !== null && (!Number.isFinite(maxPrice) || maxPrice < 0))) {
+      return { ok: false, error: 'Price filters must be non-negative numbers', matches: [] };
+    }
+    if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+      return { ok: false, error: 'Minimum price cannot exceed maximum price', matches: [] };
+    }
+    const matches = scan.listings.filter((listing) => {
+      const name = `${listing.customName || ''} ${listing.name || ''} ${(listing.lore || []).join(' ')}`.toLowerCase();
+      if (query && !name.includes(query)) return false;
+      if (type && type !== 'all' && listing.itemType !== type && !(listing.typeTags || []).includes(type)) return false;
+      if (tier && tier !== 'all' && String(listing.tier || '').toLowerCase() !== tier && !(listing.typeTags || []).includes(tier)) return false;
+      if (minPrice !== null && (listing.price === null || listing.price < minPrice)) return false;
+      if (maxPrice !== null && (listing.price === null || listing.price > maxPrice)) return false;
+      return true;
+    }).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+
+    return {
+      ok: true,
+      filters: { query, type: type || 'all', tier: tier || 'all', minPrice, maxPrice },
+      matches,
+      summary: {
+        boardListings: scan.listings.length,
+        matched: matches.length,
+        lowestPrice: matches.length ? matches[0].price : null,
+        highestPrice: matches.length ? matches[matches.length - 1].price : null
+      }
+    };
+  };
+
+  /**
    * Resolves a pane selector (slot number, { role }, { name }) to a parsed pane.
    */
   market.findPane = function (selector) {

@@ -1008,6 +1008,9 @@ class BotManager extends EventEmitter {
           this.addLog('MARKET', `Searching the Trade Market for "${body.query}"...`);
           result = await market.search(body.query, body);
           break;
+        case 'inspect':
+          result = market.inspect(body);
+          break;
         case 'next_page':
           result = await market.nextPage(body);
           break;

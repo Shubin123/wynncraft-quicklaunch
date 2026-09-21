@@ -215,6 +215,20 @@ function fakeBot(window) {
     assert.deepStrictEqual(bot.chats, ['Spring']);
   });
 
+  await test('Inspection filters and ranks listings without clicking them', () => {
+    const window = marketWindow({
+      10: pane('stick', 'Pure', ['Legendary Item', 'Price: 5 le']),
+      11: pane('stick', 'Depressing Stick', ['Price: 2 le']),
+      12: pane('diamond_chestplate', 'Boreal Aegis', ['Mythic Item', 'Price: 1 le'])
+    });
+    const bot = fakeBot(window);
+    const market = attachMarket(bot);
+    const result = market.inspect({ type: 'weapon', maxPrice: 5 * 4096 });
+    assert.ok(result.ok, result.error);
+    assert.deepStrictEqual(result.matches.map((listing) => listing.customName), ['Depressing Stick', 'Pure']);
+    assert.strictEqual(bot.clicks.length, 0, 'inspection must not interact with the game');
+  });
+
   await test('Market locations resolve by name and by coordinates', () => {
     assert.strictEqual(resolveLocation('Detlas').x, MARKET_LOCATIONS.detlas.x);
     assert.strictEqual(resolveLocation('detlas').z, MARKET_LOCATIONS.detlas.z);

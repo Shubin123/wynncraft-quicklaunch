@@ -158,6 +158,13 @@
         <input type="number" id="ceiling" min="0" step="1" placeholder="e.g. 65536" />
       </div>
     </div>
+    <div class="row" style="margin-bottom:10px">
+      <div><label for="inspect-query">Inspect name/lore</label><input type="text" id="inspect-query" placeholder="Pure" /></div>
+      <div><label for="inspect-type">Type</label><select id="inspect-type"><option value="all">All types</option><option value="weapon">Weapon</option><option value="armor">Armor</option><option value="accessory">Accessory</option><option value="item">Item</option><option value="misc">Misc</option></select></div>
+      <div><label for="inspect-tier">Tier</label><select id="inspect-tier"><option value="all">All tiers</option><option value="mythic">Mythic</option><option value="fabled">Fabled</option><option value="legendary">Legendary</option><option value="rare">Rare</option><option value="unique">Unique</option><option value="set">Set</option></select></div>
+      <button id="inspect" class="ghost">Inspect board</button>
+    </div>
+    <div id="inspect-summary" class="status" style="margin:-4px 0 10px"></div>
     <table>
       <thead>
         <tr><th>Slot</th><th>Item</th><th>Type / tags</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th>Open in</th><th></th></tr>
@@ -284,7 +291,25 @@
   }
 
   async function refresh() {
+    $('inspect-summary').textContent = '';
     render(await get('/api/bot/market'));
+  }
+
+  async function inspectBoard() {
+    const result = await post('/api/bot/market/inspect', {
+      query: $('inspect-query').value.trim(),
+      type: $('inspect-type').value,
+      tier: $('inspect-tier').value
+    });
+    if (!result.ok) {
+      $('inspect-summary').textContent = result.error || 'Inspection failed.';
+      return;
+    }
+    const { summary } = result;
+    $('inspect-summary').textContent = `${summary.matched}/${summary.boardListings} listings match` +
+      (summary.lowestPrice === null ? '.' : ` · lowest ${formatEmeralds(summary.lowestPrice)} (${summary.lowestPrice} emeralds).`);
+    renderListings({ ok: true, listings: result.matches });
+    log(`Inspected ${summary.boardListings} listings; ${summary.matched} matched. No game action taken.`);
   }
 
   async function run(label, path, body) {
@@ -334,6 +359,7 @@
   $('open').onclick = () => run('Open market', '/api/bot/market/open', { location: $('location').value });
   $('close').onclick = () => run('Close window', '/api/bot/market/close', {});
   $('refresh').onclick = refresh;
+  $('inspect').onclick = inspectBoard;
   $('next').onclick = () => run('Next page', '/api/bot/market/next_page', {});
   $('prev').onclick = () => run('Previous page', '/api/bot/market/prev_page', {});
   $('search').onclick = () => {
