@@ -122,7 +122,7 @@ Initiates connection to Wynncraft using cached Prism credentials.
 }
 ```
 * `characterSlot`: (optional) slot number `"1"` - `"5"` or class name `"archer"`, `"warrior"`, `"mage"`, `"assassin"`, `"shaman"`.
-* `antiAfk`: (optional) boolean, default `true`.
+* `antiAfk`: (optional) boolean, default `false`; enable it explicitly to start periodic anti-AFK movement.
 * `viewer`: (optional) boolean, default `false`.
 
 **Response `200 OK`**:

@@ -131,6 +131,7 @@ async function runE2E() {
     for (const el of requiredElements) {
       assert.ok(res.body.includes(el), `bot.html must contain ${el}`);
     }
+    assert.ok(!res.body.includes('id="opt-antiafk" checked'), 'anti-AFK must be opt-in by default');
   });
 
   // 2. SSE (Server-Sent Events) Stream

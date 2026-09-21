@@ -488,8 +488,9 @@ class BotManager extends EventEmitter {
         this.addLog('STATE', `Spawned in Wynncraft. World State: ${this.bot.wynn?.worldState || 'UNKNOWN'}`);
         this.broadcastSSE('status', this.getStatus());
 
-        // Start anti-AFK and idle window checker on every spawn
-        this.startAntiAfk();
+        // Anti-AFK is opt-in. Do not start it merely because the bot spawned;
+        // the dashboard/API toggle is the only thing that enables it.
+        if (this.antiAfkEnabled) this.startAntiAfk();
         this.startIdleWindowChecker();
       });
 
