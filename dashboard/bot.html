@@ -876,6 +876,21 @@
               <button id="btn-goto" onclick="gotoCoords()">Go</button>
               <button id="btn-stop" class="danger" onclick="stopNav()">Stop</button>
             </div>
+            <div style="display:flex;gap:6px;align-items:end;margin-top:7px;flex-wrap:wrap">
+              <input type="text" id="waypoint-name" placeholder="Saved place name" style="flex:1;min-width:150px" />
+              <input type="text" id="waypoint-desc" placeholder="Description (optional)" style="flex:1;min-width:180px" />
+              <button class="secondary small" onclick="syncViewportPosition()" title="Copy the live bot position from the 3D viewport">Sync viewport</button>
+              <button class="small" onclick="saveCurrentWaypoint()" title="Save the live bot position as a named place">Finalize position</button>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center;margin-top:7px;flex-wrap:wrap">
+              <span style="font-size:0.74rem;color:var(--muted);margin-right:3px">Move from browser:</span>
+              <button class="secondary small" onclick="nudgePosition(0, -5)">N 5</button>
+              <button class="secondary small" onclick="nudgePosition(-5, 0)">W 5</button>
+              <button class="secondary small" onclick="nudgePosition(5, 0)">E 5</button>
+              <button class="secondary small" onclick="nudgePosition(0, 5)">S 5</button>
+            </div>
+            <div id="saved-waypoint-chips" class="chip-group" style="margin-top:7px"></div>
+            <div id="waypoint-feedback" style="font-size:0.74rem;color:var(--muted);margin-top:4px">Viewport position follows the bot while it moves.</div>
           </div>
 
           <!-- Wynncraft City POIs -->
@@ -983,6 +998,8 @@
   const viewerVersionLabel = document.getElementById('viewer-version-label');
   let viewerTracking = false;
   const waypointChips = document.getElementById('waypoint-chips');
+  const savedWaypointChips = document.getElementById('saved-waypoint-chips');
+  const waypointFeedback = document.getElementById('waypoint-feedback');
   const tickerText = document.getElementById('ticker-text');
 
   // Window Elements
@@ -1114,6 +1131,9 @@
     // Coordinates
     if (data.position) {
       coordsText.textContent = `X:${data.position.x} Y:${data.position.y} Z:${data.position.z}`;
+      if (waypointFeedback && data.position) {
+        waypointFeedback.textContent = `Viewport synced · live position ${data.position.x}, ${data.position.y}, ${data.position.z}`;
+      }
     } else {
       coordsText.textContent = 'X: - Y: - Z: -';
     }
@@ -1870,6 +1890,7 @@
       if (!res.ok) return;
       const data = await res.json();
       waypointChips.innerHTML = '';
+      if (savedWaypointChips) savedWaypointChips.innerHTML = '';
       (data.waypoints || []).forEach(wp => {
         const chip = document.createElement('span');
         chip.className = 'chip';
@@ -1882,8 +1903,72 @@
           gotoCoords();
         };
         waypointChips.appendChild(chip);
+        if (!wp.builtin && savedWaypointChips) {
+          const saved = document.createElement('span');
+          saved.className = 'chip';
+          saved.textContent = `💾 ${wp.name}`;
+          saved.title = `${wp.desc || 'Saved place'} · (${wp.x}, ${wp.y}, ${wp.z}) · click to navigate`;
+          saved.onclick = () => {
+            setNavCoords(wp);
+            gotoCoords();
+          };
+          savedWaypointChips.appendChild(saved);
+        }
       });
     } catch (e) {}
+  }
+
+  function setNavCoords(position) {
+    document.getElementById('nav-x').value = position.x;
+    document.getElementById('nav-y').value = position.y;
+    document.getElementById('nav-z').value = position.z;
+  }
+
+  async function syncViewportPosition() {
+    try {
+      const res = await fetch('/api/bot/waypoints/current');
+      const data = await res.json();
+      if (!data.position) throw new Error(data.error || 'Bot position unavailable');
+      setNavCoords(data.position);
+      if (waypointFeedback) waypointFeedback.textContent = `Synced from viewport at ${data.position.x}, ${data.position.y}, ${data.position.z}. Adjust coordinates, then press Go.`;
+    } catch (e) {
+      if (waypointFeedback) waypointFeedback.textContent = e.message;
+    }
+  }
+
+  async function nudgePosition(dx, dz) {
+    let x = parseFloat(document.getElementById('nav-x').value);
+    let y = parseFloat(document.getElementById('nav-y').value);
+    let z = parseFloat(document.getElementById('nav-z').value);
+    if ([x, y, z].some(Number.isNaN)) {
+      await syncViewportPosition();
+      x = parseFloat(document.getElementById('nav-x').value);
+      y = parseFloat(document.getElementById('nav-y').value);
+      z = parseFloat(document.getElementById('nav-z').value);
+    }
+    if ([x, y, z].some(Number.isNaN)) return;
+    setNavCoords({ x: x + dx, y, z: z + dz });
+    await gotoCoords();
+  }
+
+  async function saveCurrentWaypoint() {
+    const name = document.getElementById('waypoint-name').value.trim();
+    const desc = document.getElementById('waypoint-desc').value.trim();
+    if (!name) {
+      if (waypointFeedback) waypointFeedback.textContent = 'Enter a name before finalizing this position.';
+      return;
+    }
+    try {
+      const res = await fetch('/api/bot/waypoints/finalize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, desc })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not save position');
+      if (waypointFeedback) waypointFeedback.textContent = `Saved ${data.waypoint.name} at (${data.waypoint.x.toFixed(1)}, ${data.waypoint.y.toFixed(1)}, ${data.waypoint.z.toFixed(1)}).`;
+      await loadWaypoints();
+    } catch (e) {
+      if (waypointFeedback) waypointFeedback.textContent = e.message;
+    }
   }
 
   async function gotoCoords() {

@@ -74,6 +74,7 @@ const { ChatInsightsEngine } = require('./chat_insights');
 const { goals } = require('mineflayer-pathfinder');
 const { handlePriceRoute } = require('./routes/price_routes');
 const { serveStatic } = require('./routes/static_routes');
+const waypointStore = require('./lib/waypoints');
 
 // The bot and dashboard now share this process. Keep WYNN_BOT_PORT as a
 // compatibility override, but make the unified service's documented port
@@ -1115,6 +1116,18 @@ class BotManager extends EventEmitter {
     return { ok: true };
   }
 
+  currentPosition() {
+    const position = this.bot?.entity?.position;
+    if (!position) return null;
+    return { x: Number(position.x), y: Number(position.y), z: Number(position.z) };
+  }
+
+  saveCurrentWaypoint(name, desc = '') {
+    const position = this.currentPosition();
+    if (!position) return { ok: false, error: 'Bot position is unavailable; connect and load into a world first' };
+    return waypointStore.saveWaypoint({ name, desc, ...position });
+  }
+
   stop() {
     if (!this.bot || this.status !== 'connected') {
       return { ok: false, error: 'Bot is not connected' };
@@ -1321,7 +1334,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/bot/waypoints') {
-      return json(200, { waypoints: WAYPOINTS });
+      return json(200, { waypoints: waypointStore.listWaypoints() });
+    }
+
+    if (pathname === '/api/bot/waypoints/current') {
+      const position = manager.currentPosition();
+      return json(200, { ok: !!position, position, synced: !!position });
     }
 
     if (pathname === '/api/bot/chat/history') {
@@ -1441,6 +1459,21 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/bot/goto') {
       const result = manager.goto(parseFloat(body.x), parseFloat(body.y), parseFloat(body.z));
       return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/waypoints') {
+      const result = waypointStore.saveWaypoint(body);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/waypoints/finalize') {
+      const result = manager.saveCurrentWaypoint(body.name, body.desc);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/waypoints/delete') {
+      const result = waypointStore.deleteWaypoint(body.name);
+      return json(result.ok ? 200 : 404, result);
     }
 
     if (pathname === '/api/bot/stop') {

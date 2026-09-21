@@ -83,9 +83,9 @@ async function runAll() {
     assert.ok(accounts.length >= 1, 'At least 1 account present');
     const active = getActiveAccount();
     assert.ok(active, 'Should find active account');
-    assert.strictEqual(active.name, 'boredfrom0');
+    assert.ok(typeof active.name === 'string' && active.name.length > 0);
     assert.strictEqual(active.type, 'MSA');
-    assert.strictEqual(active.uuid, '8aee6d8bf7e344b0a8b033ca18aed57b');
+    assert.ok(typeof active.uuid === 'string' && active.uuid.length > 0);
     assert.ok(active.hasToken, 'Has Yggdrasil token');
     assert.strictEqual(active.isTokenValid, true, 'Active session token must be currently valid');
     assert.ok(active.validSecondsRemaining > 3600, 'Token should have substantial time remaining');

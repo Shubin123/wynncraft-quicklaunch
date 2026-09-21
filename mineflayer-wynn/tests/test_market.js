@@ -13,6 +13,7 @@ const {
   classifySlot,
   parseEmeralds,
   formatEmeralds,
+  classifyItemTags,
   resolveLocation,
   MARKET_LOCATIONS
 } = require('../src/market');
@@ -102,6 +103,21 @@ function fakeBot(window) {
     assert.strictEqual(listing.amount, 1);
     assert.strictEqual(listing.seller, 'SomePlayer');
     assert.strictEqual(listing.tier.toLowerCase(), 'mythic');
+  });
+
+  await test('Named gear gets useful browser-facing type tags and hover metadata', () => {
+    const pure = classifySlot(pane('stick', 'Pure', ['Legendary Item', 'Price: 2 le']), 10);
+    assert.strictEqual(pure.itemType, 'weapon');
+    assert.ok(pure.typeTags.includes('weapon'));
+    assert.ok(pure.typeTags.includes('legendary'));
+
+    const depressing = classifySlot(pane('stick', 'Depressing Stick', ['Price: 32 eb']), 11);
+    assert.strictEqual(depressing.itemType, 'weapon');
+    assert.ok(depressing.typeTags.includes('weapon'));
+
+    const armor = classifySlot(pane('diamond_chestplate', 'Boreal-Patterned Aegis', ['Mythic Item', 'Price: 1 le']), 12);
+    assert.strictEqual(armor.itemType, 'armor');
+    assert.ok(armor.typeTags.includes('mythic'));
   });
 
   await test('Market windows expose listings, controls, and page number', () => {

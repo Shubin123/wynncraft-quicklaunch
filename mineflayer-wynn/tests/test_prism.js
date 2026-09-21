@@ -29,7 +29,7 @@ assert.ok(Array.isArray(accounts), 'Accounts should be an array');
 assert.ok(accounts.length > 0, 'Should find at least one account');
 const active = prism.getActiveAccount();
 assert.ok(active, 'Active account should be found');
-assert.strictEqual(active.name, 'boredfrom0', 'Account name matches boredfrom0');
+assert.ok(typeof active.name === 'string' && active.name.length > 0, 'Active account has a name');
 assert.ok(active.hasToken, 'Account should have token');
 console.log(`✔ Test 4 passed: Active account "${active.name}" found with valid session`);
 

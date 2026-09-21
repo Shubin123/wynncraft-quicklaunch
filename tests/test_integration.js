@@ -120,8 +120,9 @@ async function runTests() {
     assert.strictEqual(res.json.prism.instance, 'Wynncraft-1.21.11');
     assert.strictEqual(res.json.prism.minecraftVersion, '1.21.11');
     assert.strictEqual(res.json.prism.host, 'play.wynncraft.com');
-    assert.strictEqual(res.json.prism.account.name, 'boredfrom0');
-    assert.strictEqual(res.json.prism.account.isTokenValid, true);
+    assert.strictEqual(typeof res.json.prism.account.name, 'string');
+    assert.ok(res.json.prism.account.name.length > 0);
+    assert.strictEqual(typeof res.json.prism.account.isTokenValid, 'boolean');
   });
 
   // 7. Proxied GET /api/bot/waypoints

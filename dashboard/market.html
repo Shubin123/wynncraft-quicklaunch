@@ -80,6 +80,8 @@
   .slot.filler { opacity: 0.35; cursor: default; }
   .slot.empty { opacity: 0.2; cursor: default; }
   .slot .price { color: var(--listing); font-weight: 600; }
+  .tag { display:inline-block; padding:1px 5px; margin:1px 2px 1px 0; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:0.68rem; }
+  .item-tags { min-width:120px; }
   .legend { font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
   .legend b { font-weight: 600; }
   #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; max-height: 160px; overflow-y: auto; white-space: pre-wrap; }
@@ -158,9 +160,9 @@
     </div>
     <table>
       <thead>
-        <tr><th>Slot</th><th>Item</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th>Open in</th><th></th></tr>
+        <tr><th>Slot</th><th>Item</th><th>Type / tags</th><th>Tier</th><th class="num">Price</th><th class="num">Emeralds</th><th class="num">Amount</th><th>Seller</th><th>Open in</th><th></th></tr>
       </thead>
-      <tbody id="listings"><tr><td colspan="9" class="status">No market window open.</td></tr></tbody>
+      <tbody id="listings"><tr><td colspan="10" class="status">No market window open.</td></tr></tbody>
     </table>
   </div>
 
@@ -216,8 +218,9 @@
   function paneLabel(slot) {
     if (slot.kind === 'empty') return `<span class="idx">${slot.slot}</span>`;
     const name = (slot.customName || slot.name || '').slice(0, 28);
-    const price = slot.kind === 'listing' ? `<div class="price">${formatEmeralds(slot.price)}</div>` : '';
-    return `<span class="idx">${slot.slot}</span><div>${escapeHtml(name)}</div>${price}`;
+    const price = slot.kind === 'listing' ? `<div class="price">${formatEmeralds(slot.price)} <small>(${slot.price}e)</small></div>` : '';
+    const tags = slot.kind === 'listing' && slot.typeTags ? `<div>${slot.typeTags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>` : '';
+    return `<span class="idx">${slot.slot}</span><div>${escapeHtml(name)}</div>${tags}${price}`;
   }
 
   function renderGui(data) {
@@ -232,7 +235,7 @@
       button.className = `slot ${slot.kind}`;
       button.innerHTML = paneLabel(slot);
       const lore = (slot.lore || []).join('\n');
-      button.title = [slot.customName || slot.name, lore, `slot ${slot.slot} · ${slot.kind}${slot.role ? ' · ' + slot.role : ''}`]
+      button.title = [slot.customName || slot.name, slot.typeTags?.length ? `Tags: ${slot.typeTags.join(', ')}` : '', lore, slot.price !== undefined ? `Price: ${formatEmeralds(slot.price)} (${slot.price} emeralds)` : '', `slot ${slot.slot} · ${slot.kind}${slot.role ? ' · ' + slot.role : ''}`]
         .filter(Boolean).join('\n');
       if (slot.kind === 'listing') {
         button.onclick = () => buy(slot);
@@ -250,13 +253,14 @@
     const listings = (data.ok && data.listings) || [];
     $('listing-count').textContent = listings.length ? `${listings.length} shown` : '';
     if (!listings.length) {
-      body.innerHTML = '<tr><td colspan="9" class="status">No listings in the open window.</td></tr>';
+      body.innerHTML = '<tr><td colspan="10" class="status">No listings in the open window.</td></tr>';
       return;
     }
     body.innerHTML = listings.map(listing => `
       <tr>
         <td class="num">${listing.slot}</td>
-        <td>${escapeHtml(listing.customName || listing.name)}</td>
+        <td title="${escapeHtml((listing.lore || []).join('\\n'))}"><strong>${escapeHtml(listing.customName || listing.name)}</strong></td>
+        <td class="item-tags" title="${escapeHtml((listing.typeTags || []).join(', '))}">${(listing.typeTags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</td>
         <td>${escapeHtml(listing.tier || '')}</td>
         <td class="num">${formatEmeralds(listing.price)}</td>
         <td class="num">${listing.price ?? ''}</td>
