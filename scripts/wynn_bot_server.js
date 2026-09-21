@@ -75,6 +75,7 @@ const { goals } = require('mineflayer-pathfinder');
 const { handlePriceRoute } = require('./routes/price_routes');
 const { serveStatic } = require('./routes/static_routes');
 const waypointStore = require('./lib/waypoints');
+const manualPathStore = require('./lib/manual_paths');
 
 // The bot and dashboard now share this process. Keep WYNN_BOT_PORT as a
 // compatibility override, but make the unified service's documented port
@@ -127,6 +128,11 @@ class BotManager extends EventEmitter {
     this.lastLogTime = 0;
     this.antiAfkInterval = null;      // handle for anti-AFK loop
     this.idleWindowInterval = null;   // handle for idle window/pane checker
+    this.manualMode = false;
+    this.manualPoints = [];
+    this.manualSampleInterval = null;
+    this.manualKeys = new Set();
+    this.manualPathRunning = false;
   }
 
   getBot() {
@@ -264,6 +270,11 @@ class BotManager extends EventEmitter {
       autoLock: this.bot?.wynn?.autoLock !== undefined ? this.bot.wynn.autoLock : this.autoLockEnabled,
       characterTarget: this.bot?.wynn?.characterTarget || this.characterTarget,
       manualOverride: this.manualOverride,
+      manualControl: {
+        active: this.manualMode,
+        points: this.manualPoints.length,
+        pathRunning: this.manualPathRunning,
+      },
       hasOpenWindow: !!this.bot?.currentWindow,
       currentWindowTitle: this.bot?.currentWindow ? (extractCleanText ? extractCleanText(this.bot.currentWindow.title) : (typeof this.bot.currentWindow.title === 'string' ? stripFormatting(this.bot.currentWindow.title) : 'Window')) : null,
       currentWindowId: this.bot?.currentWindow?.id ?? null,
@@ -1042,6 +1053,8 @@ class BotManager extends EventEmitter {
   }
 
   disconnect() {
+    this.stopManualControl(false);
+    this.manualPoints = [];
     this.stopAntiAfk();
     this.stopIdleWindowChecker();
     if (this.bot) {
@@ -1120,6 +1133,87 @@ class BotManager extends EventEmitter {
     const position = this.bot?.entity?.position;
     if (!position) return null;
     return { x: Number(position.x), y: Number(position.y), z: Number(position.z) };
+  }
+
+  startManualControl() {
+    if (!this.bot || this.status !== 'connected') return { ok: false, error: 'Bot is not connected' };
+    if (this.manualPathRunning) return { ok: false, error: 'A saved path is currently running' };
+    this.stopManualControl(false);
+    this.manualMode = true;
+    const position = this.currentPosition();
+    if (position) this.manualPoints = [position];
+    this.manualSampleInterval = setInterval(() => {
+      const next = this.currentPosition();
+      const previous = this.manualPoints[this.manualPoints.length - 1];
+      if (!next || (previous && Math.hypot(next.x - previous.x, next.y - previous.y, next.z - previous.z) < 0.35)) return;
+      this.manualPoints.push(next);
+      this.broadcastSSE('manual_position', next);
+    }, 250);
+    this.addLog('NAV', 'Manual browser control enabled; WASD and mouse input are now live.');
+    this.broadcastSSE('status', this.getStatus());
+    return { ok: true, active: true, points: this.manualPoints.length };
+  }
+
+  manualInput(key, pressed) {
+    if (!this.manualMode || !this.bot) return { ok: false, error: 'Manual control is not active' };
+    const controls = { w: 'forward', a: 'left', s: 'back', d: 'right', space: 'jump', shift: 'sneak' };
+    const control = controls[String(key || '').toLowerCase()];
+    if (!control) return { ok: false, error: `Unsupported manual control: ${key}` };
+    try {
+      this.bot.setControlState(control, !!pressed);
+      if (pressed) this.manualKeys.add(control); else this.manualKeys.delete(control);
+      return { ok: true, control, pressed: !!pressed };
+    } catch (err) { return { ok: false, error: err.message }; }
+  }
+
+  manualLook(dx, dy) {
+    if (!this.manualMode || !this.bot?.entity) return { ok: false, error: 'Manual control is not active' };
+    const yaw = this.bot.entity.yaw + Number(dx || 0) * 0.0025;
+    const pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.bot.entity.pitch + Number(dy || 0) * 0.0025));
+    try { this.bot.look(yaw, pitch, true); return { ok: true, yaw, pitch }; }
+    catch (err) { return { ok: false, error: err.message }; }
+  }
+
+  stopManualControl(broadcast = true) {
+    for (const control of this.manualKeys) {
+      try { this.bot?.setControlState(control, false); } catch (e) {}
+    }
+    this.manualKeys.clear();
+    if (this.manualSampleInterval) clearInterval(this.manualSampleInterval);
+    this.manualSampleInterval = null;
+    this.manualMode = false;
+    if (broadcast) this.broadcastSSE('status', this.getStatus());
+    return { ok: true, active: false, points: this.manualPoints.length };
+  }
+
+  saveManualPath(name, description = '') {
+    return manualPathStore.savePath(name, this.manualPoints, description);
+  }
+
+  exitManualControl({ save = false, name = '', description = '' } = {}) {
+    const points = this.manualPoints.length;
+    const saved = save ? this.saveManualPath(name, description) : null;
+    if (save && !saved.ok) return saved;
+    this.stopManualControl(false);
+    this.manualPoints = [];
+    this.addLog('NAV', save ? `Manual control exited and path "${name}" saved (${points} points).` : 'Manual browser control exited without saving.');
+    this.broadcastSSE('status', this.getStatus());
+    return { ok: true, active: false, saved, points };
+  }
+
+  async runManualPath(name) {
+    if (!this.bot || this.status !== 'connected') return { ok: false, error: 'Bot is not connected' };
+    if (this.manualMode || this.manualPathRunning) return { ok: false, error: 'Manual control or another path is already active' };
+    const pathData = manualPathStore.listPaths().find((item) => item.name.toLowerCase() === String(name || '').trim().toLowerCase());
+    if (!pathData) return { ok: false, error: `Saved path not found: ${name}` };
+    this.manualPathRunning = true;
+    try {
+      for (const point of pathData.points) {
+        await this.bot.pathfinder.goto(new goals.GoalNear(point.x, point.y, point.z, 1));
+      }
+      return { ok: true, path: pathData.name, points: pathData.points.length };
+    } catch (err) { return { ok: false, error: err.message, path: pathData.name }; }
+    finally { this.manualPathRunning = false; this.broadcastSSE('status', this.getStatus()); }
   }
 
   saveCurrentWaypoint(name, desc = '') {
@@ -1342,6 +1436,10 @@ const server = http.createServer(async (req, res) => {
       return json(200, { ok: !!position, position, synced: !!position });
     }
 
+    if (pathname === '/api/bot/manual/paths') {
+      return json(200, { paths: manualPathStore.listPaths() });
+    }
+
     if (pathname === '/api/bot/chat/history') {
       return json(200, { messages: manager.chatLog });
     }
@@ -1474,6 +1572,41 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/bot/waypoints/delete') {
       const result = waypointStore.deleteWaypoint(body.name);
       return json(result.ok ? 200 : 404, result);
+    }
+
+    if (pathname === '/api/bot/manual/start') {
+      const result = manager.startManualControl();
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/manual/input') {
+      const result = manager.manualInput(body.key, body.pressed);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/manual/look') {
+      const result = manager.manualLook(body.dx, body.dy);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/manual/stop') {
+      const result = manager.exitManualControl(body);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/manual/save') {
+      const result = manager.saveManualPath(body.name, body.description);
+      return json(result.ok ? 200 : 400, result);
+    }
+
+    if (pathname === '/api/bot/manual/delete') {
+      const result = manualPathStore.deletePath(body.name);
+      return json(result.ok ? 200 : 404, result);
+    }
+
+    if (pathname === '/api/bot/manual/run') {
+      const result = await manager.runManualPath(body.name);
+      return json(result.ok ? 200 : 400, result);
     }
 
     if (pathname === '/api/bot/stop') {

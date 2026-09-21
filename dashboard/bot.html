@@ -656,6 +656,26 @@
             <span>Real-time Three.js canvas rendered directly from server world chunks.</span>
             <span id="viewer-version-label">Version Compatibility: Protocol 775</span>
           </div>
+          <div id="manual-controls" style="margin-top:10px;padding:9px;border:1px solid rgba(6,182,212,0.25);border-radius:7px;background:rgba(6,182,212,0.06)">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <strong style="font-size:0.8rem">Manual positioning</strong>
+              <button class="secondary small" id="manual-start-btn" onclick="startManualControl()">Start WASD mode</button>
+              <button class="secondary small" id="manual-mouse-btn" onclick="captureManualMouse()" disabled>Capture mouse</button>
+              <button class="danger small" id="manual-stop-btn" onclick="stopManualControl(false)" disabled>Exit</button>
+              <span id="manual-status" style="font-size:0.74rem;color:var(--muted)">Path recording is off.</span>
+            </div>
+            <div id="manual-save-row" style="display:none;gap:6px;align-items:end;flex-wrap:wrap;margin-top:7px">
+              <input type="text" id="manual-path-name" placeholder="Path name" style="flex:1;min-width:140px" />
+              <input type="text" id="manual-path-description" placeholder="Description" style="flex:1;min-width:180px" />
+              <button class="small" onclick="stopManualControl(true)">Exit &amp; Save Path</button>
+            </div>
+            <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;margin-top:7px">
+              <select id="manual-path-select" style="flex:1;min-width:180px"><option value="">No saved paths</option></select>
+              <button class="secondary small" onclick="runSavedManualPath()">Run saved path</button>
+              <button class="danger small" onclick="deleteSavedManualPath()">Delete path</button>
+            </div>
+            <div style="font-size:0.72rem;color:var(--muted);margin-top:5px">When active, focus this page and use W/A/S/D, Space, Shift, and mouse capture. Exit without saving discards the recording.</div>
+          </div>
         </div>
       </div>
 
@@ -901,15 +921,6 @@
             </div>
           </div>
 
-          <!-- Trade Market Quick Check -->
-          <div style="margin-top:auto;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">
-            <label>Trade Market Quick Check</label>
-            <div style="display:flex;gap:6px">
-              <input type="text" id="price-query" placeholder="e.g. Gale's Sight" onkeydown="if(event.key==='Enter') quickPrice();" />
-              <button class="secondary small" onclick="quickPrice()">Check</button>
-            </div>
-            <div id="price-result" style="font-size:0.78rem;color:var(--muted);margin-top:4px"></div>
-          </div>
         </div>
       </div>
 
@@ -997,6 +1008,13 @@
   const viewerTrackBtn = document.getElementById('viewer-track-btn');
   const viewerVersionLabel = document.getElementById('viewer-version-label');
   let viewerTracking = false;
+  let manualControlActive = false;
+  const manualStartButton = document.getElementById('manual-start-btn');
+  const manualMouseButton = document.getElementById('manual-mouse-btn');
+  const manualStopButton = document.getElementById('manual-stop-btn');
+  const manualStatus = document.getElementById('manual-status');
+  const manualSaveRow = document.getElementById('manual-save-row');
+  const manualPathSelect = document.getElementById('manual-path-select');
   const waypointChips = document.getElementById('waypoint-chips');
   const savedWaypointChips = document.getElementById('saved-waypoint-chips');
   const waypointFeedback = document.getElementById('waypoint-feedback');
@@ -1023,6 +1041,98 @@
     fetchInsights();
     startPolling();
     initSSE();
+    loadManualPaths();
+  });
+
+  function setManualControlUi(active, message) {
+    manualControlActive = !!active;
+    if (manualStartButton) manualStartButton.disabled = manualControlActive;
+    if (manualMouseButton) manualMouseButton.disabled = !manualControlActive;
+    if (manualStopButton) manualStopButton.disabled = !manualControlActive;
+    if (manualSaveRow) manualSaveRow.style.display = manualControlActive ? 'flex' : 'none';
+    if (manualStatus) manualStatus.textContent = message || (manualControlActive ? 'Recording movement...' : 'Path recording is off.');
+  }
+
+  async function manualPost(path, body = {}) {
+    const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Manual control request failed');
+    return data;
+  }
+
+  async function startManualControl() {
+    try {
+      const data = await manualPost('/api/bot/manual/start');
+      setManualControlUi(true, `Recording from ${data.points || 1} position${data.points === 1 ? '' : 's'}.`);
+    } catch (e) { if (manualStatus) manualStatus.textContent = e.message; }
+  }
+
+  async function stopManualControl(save) {
+    if (!manualControlActive) return;
+    const body = { save: !!save };
+    if (save) {
+      body.name = document.getElementById('manual-path-name').value.trim();
+      body.description = document.getElementById('manual-path-description').value.trim();
+      if (!body.name) { if (manualStatus) manualStatus.textContent = 'Enter a path name before saving.'; return; }
+    }
+    try {
+      const data = await manualPost('/api/bot/manual/stop', body);
+      if (document.pointerLockElement) document.exitPointerLock();
+      setManualControlUi(false, data.saved?.path ? `Saved path "${data.saved.path.name}".` : 'Manual control exited without saving.');
+      await loadManualPaths();
+    } catch (e) { if (manualStatus) manualStatus.textContent = e.message; }
+  }
+
+  function captureManualMouse() {
+    if (!manualControlActive) return;
+    const target = document.getElementById('viewer-card');
+    if (target && target.requestPointerLock) target.requestPointerLock();
+    if (manualStatus) manualStatus.textContent = 'Mouse captured. Move to look; press Escape to release.';
+  }
+
+  async function loadManualPaths() {
+    if (!manualPathSelect) return;
+    try {
+      const response = await fetch('/api/bot/manual/paths');
+      const data = await response.json();
+      manualPathSelect.innerHTML = data.paths?.length ? data.paths.map(pathData => `<option value="${escapeHtml(pathData.name)}">${escapeHtml(pathData.name)} (${pathData.points.length} points)</option>`).join('') : '<option value="">No saved paths</option>';
+    } catch (e) {}
+  }
+
+  async function runSavedManualPath() {
+    const name = manualPathSelect?.value;
+    if (!name) return;
+    try {
+      const data = await manualPost('/api/bot/manual/run', { name });
+      if (manualStatus) manualStatus.textContent = `Ran ${data.path} (${data.points} points).`;
+    } catch (e) { if (manualStatus) manualStatus.textContent = e.message; }
+  }
+
+  async function deleteSavedManualPath() {
+    const name = manualPathSelect?.value;
+    if (!name || !confirm(`Delete saved path "${name}"?`)) return;
+    try { await manualPost('/api/bot/manual/delete', { name }); await loadManualPaths(); }
+    catch (e) { if (manualStatus) manualStatus.textContent = e.message; }
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (!manualControlActive) return;
+    const key = ({ ' ': 'space', Shift: 'shift', w: 'w', a: 'a', s: 's', d: 'd' })[event.key] || event.key.toLowerCase();
+    if (key === 'escape') { if (document.pointerLockElement) document.exitPointerLock(); return; }
+    if (!['w', 'a', 's', 'd', 'space', 'shift'].includes(key)) return;
+    event.preventDefault();
+    manualPost('/api/bot/manual/input', { key, pressed: true }).catch(() => {});
+  });
+  document.addEventListener('keyup', (event) => {
+    if (!manualControlActive) return;
+    const key = ({ ' ': 'space', Shift: 'shift', w: 'w', a: 'a', s: 's', d: 'd' })[event.key] || event.key.toLowerCase();
+    if (!['w', 'a', 's', 'd', 'space', 'shift'].includes(key)) return;
+    event.preventDefault();
+    manualPost('/api/bot/manual/input', { key, pressed: false }).catch(() => {});
+  });
+  document.addEventListener('mousemove', (event) => {
+    if (!manualControlActive || document.pointerLockElement !== document.getElementById('viewer-card')) return;
+    manualPost('/api/bot/manual/look', { dx: event.movementX, dy: event.movementY }).catch(() => {});
   });
 
   async function fetchStatus() {
@@ -1038,6 +1148,11 @@
 
   function updateUI(data) {
     connected = data.connected;
+    if (data.manualControl && data.manualControl.active !== manualControlActive) {
+      setManualControlUi(data.manualControl.active, data.manualControl.active
+        ? `Recording ${data.manualControl.points || 0} positions...`
+        : 'Path recording is off.');
+    }
 
     // Badge
     if (data.connected) {
@@ -1989,25 +2104,6 @@
     try {
       await fetch('/api/bot/stop', { method: 'POST' });
     } catch (e) {}
-  }
-
-  async function quickPrice() {
-    const q = document.getElementById('price-query').value.trim();
-    if (!q) return;
-    const resEl = document.getElementById('price-result');
-    resEl.textContent = 'Searching trade market...';
-    try {
-      const res = await fetch(`/api/price?item=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      if (res.ok && data && data.lowest_price !== undefined) {
-        const estimate = data.average_price ?? data.p50_price ?? data.lowest_price;
-        resEl.textContent = `${q}: lowest ${data.lowest_price}e · typical ${estimate}e`;
-      } else {
-        resEl.textContent = data.error || 'No price data found.';
-      }
-    } catch (e) {
-      resEl.textContent = 'Price lookup failed.';
-    }
   }
 
   // ==========================================
