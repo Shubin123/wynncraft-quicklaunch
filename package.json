@@ -19,6 +19,7 @@
     "db:backfill": "node scripts/mysql_backfill.js",
     "db:seed-prices": "node scripts/seed_tracked_prices.js",
     "db:backup:linux": "bash scripts/linux_mysql_backup.sh",
+    "market:sync": "node scripts/daily_market_sync.js",
     "wynner": "bash scripts/wynner.sh",
     "test": "bash tests/run_all_tests.sh && bash scripts/check.sh",
     "postinstall": "cd mineflayer-wynn && npm ci --no-audit --no-fund"

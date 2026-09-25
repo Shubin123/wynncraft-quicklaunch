@@ -106,6 +106,18 @@ chmod 600 key.text
 bash scripts/install_daily_mysql_backup.sh
 ```
 
+The daily job seeds and retains at least 50 liquid-item candidates, then stores
+one live price point per available item before backing up to MySQL. To collect
+real prices, also configure a separate Wynnventory API key (the MySQL
+`key.text` cannot be used for this):
+
+```bash
+mkdir -p ~/.config/wynn-dashboard
+chmod 700 ~/.config/wynn-dashboard
+# put the Wynnventory API key alone on one line in this file
+chmod 600 ~/.config/wynn-dashboard/wynnventory.key
+```
+
 The setup stores the password only in the macOS Keychain. Its non-secret
 connection settings and the pinned AWS RDS CA are stored with owner-only
 permissions in `~/.config/wynn-dashboard/`; neither is added to the repo.

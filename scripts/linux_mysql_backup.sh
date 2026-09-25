@@ -50,4 +50,5 @@ fi
 export WYNN_MYSQL_HOST WYNN_MYSQL_PORT WYNN_MYSQL_USER WYNN_MYSQL_DATABASE
 export WYNN_MYSQL_SSL_CA="$CA_FILE"
 export WYNN_MYSQL_PASSWORD_FILE="$KEY_FILE"
+node "$REPO_DIR/scripts/daily_market_sync.js"
 exec node "$REPO_DIR/scripts/mysql_backfill.js"

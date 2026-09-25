@@ -93,6 +93,7 @@ node "$SCRIPT_DIR/test_roll_model.js"
 # 16b. Node price cache foundations: history and regression primitives
 node "$SCRIPT_DIR/test_price_cache.js"
 node "$SCRIPT_DIR/test_optimizer.js"
+node "$SCRIPT_DIR/test_daily_market_sync.js"
 env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_smoke.js"
 env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_store.js"
 env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_e2e.js"
