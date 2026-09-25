@@ -16,6 +16,9 @@ NODE_PATH_PARTS=(
   "/usr/local/lib/node_modules"
 )
 export NODE_PATH="$(IFS=:; echo "${NODE_PATH_PARTS[*]}")"
+# The ordinary unit suite must not write to a configured personal database.
+# The three explicit MySQL tests below re-enable it in isolated processes.
+export WYNN_MYSQL_DISABLED=1
 
 # Prefer the project venv (Pillow lives there on macOS/Homebrew Python).
 if [[ -x "$REPO_DIR/.venv/bin/python3" ]]; then
@@ -90,6 +93,10 @@ node "$SCRIPT_DIR/test_roll_model.js"
 # 16b. Node price cache foundations: history and regression primitives
 node "$SCRIPT_DIR/test_price_cache.js"
 node "$SCRIPT_DIR/test_optimizer.js"
+env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_smoke.js"
+env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_store.js"
+env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_mysql_e2e.js"
+env -u WYNN_MYSQL_DISABLED node "$SCRIPT_DIR/test_linux_mysql_backup.js"
 
 # 17. Training pipeline: runs, labels its calibration, beats the roll-blind model
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_training.py"

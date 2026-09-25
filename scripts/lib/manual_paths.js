@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const mysqlStore = require('./mysql_store');
 
 const PATH_FILE = process.env.WYNN_MANUAL_PATH_FILE || path.join(os.homedir(), '.config', 'wynn-dashboard', 'manual_paths.json');
 
@@ -26,11 +27,15 @@ function savePath(name, points, description = '') {
   if (!Array.isArray(points) || points.length < 1 || !points.every(validPoint)) return { ok: false, error: 'a saved position needs at least one valid recorded position' };
   const pathData = { name: cleanName, description: String(description || ''), points: points.map((p) => ({ x: Number(p.x), y: Number(p.y), z: Number(p.z) })), savedAt: new Date().toISOString() };
   const paths = readPaths().filter((item) => item.name.toLowerCase() !== cleanName.toLowerCase());
-  paths.push(pathData); writePaths(paths); return { ok: true, path: pathData, paths };
+  paths.push(pathData); writePaths(paths); mysqlStore.saveState('manual_path', pathData.name.toLowerCase(), pathData); return { ok: true, path: pathData, paths };
 }
 function deletePath(name) {
   const before = readPaths(); const paths = before.filter((item) => item.name.toLowerCase() !== String(name || '').trim().toLowerCase());
-  writePaths(paths); return { ok: paths.length !== before.length, paths };
+  writePaths(paths);
+  // State is overwritten with a tombstone rather than silently removed, so a
+  // remote consumer can faithfully reflect the local deletion.
+  mysqlStore.saveState('manual_path', String(name || '').trim().toLowerCase(), { deleted: true, deletedAt: new Date().toISOString() });
+  return { ok: paths.length !== before.length, paths };
 }
 
 module.exports = { PATH_FILE, validPoint, listPaths, savePath, deletePath };

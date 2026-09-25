@@ -76,6 +76,7 @@ const { handlePriceRoute } = require('./routes/price_routes');
 const { serveStatic } = require('./routes/static_routes');
 const waypointStore = require('./lib/waypoints');
 const manualPathStore = require('./lib/manual_paths');
+const mysqlStore = require('./lib/mysql_store');
 
 // The bot and dashboard now share this process. Keep WYNN_BOT_PORT as a
 // compatibility override, but make the unified service's documented port
@@ -1401,6 +1402,34 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/bot/status') {
       return json(200, manager.getStatus());
+    }
+
+    if (pathname === '/api/storage/status') {
+      return json(200, mysqlStore.status());
+    }
+
+    if (pathname === '/api/storage/events') {
+      try {
+        const events = await mysqlStore.readEvents({
+          stream: parsedUrl.searchParams.get('stream'), type: parsedUrl.searchParams.get('type'),
+          item: parsedUrl.searchParams.get('item'), since: parsedUrl.searchParams.get('since'),
+          limit: parsedUrl.searchParams.get('limit'), offset: parsedUrl.searchParams.get('offset')
+        });
+        return json(200, { events, count: events.length });
+      } catch (err) {
+        return json(503, { error: 'MySQL storage is unavailable', detail: err.message });
+      }
+    }
+
+    if (pathname === '/api/storage/state') {
+      const kind = parsedUrl.searchParams.get('kind');
+      if (!kind) return json(400, { error: "missing 'kind' query parameter" });
+      try {
+        const state = await mysqlStore.readState(kind, parsedUrl.searchParams.get('key'));
+        return json(200, { state, count: state.length });
+      } catch (err) {
+        return json(503, { error: 'MySQL storage is unavailable', detail: err.message });
+      }
     }
 
     if (pathname === '/api/bot/window') {

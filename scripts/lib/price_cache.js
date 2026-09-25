@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const mysqlStore = require('./mysql_store');
 
 const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'wynn-dashboard');
 const KEY_FILE = path.join(os.homedir(), '.config', 'wynn-dashboard', 'wynnventory.key');
@@ -45,9 +46,11 @@ async function fetchWynnventory(endpoint, key) {
 function recordSnapshot(item, body) {
   if (!body || body.lowest_price === undefined) return;
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.appendFileSync(HISTORY_FILE, `${JSON.stringify({ ts: Date.now() / 1000, item: item.toLowerCase(),
+  const row = { type: 'price_point', ts: Date.now() / 1000, item: item.toLowerCase(),
     lowest_price: body.lowest_price, highest_price: body.highest_price, average_price: body.average_price,
-    p50_price: body.p50_price })}\n`);
+    p50_price: body.p50_price };
+  fs.appendFileSync(HISTORY_FILE, `${JSON.stringify(row)}\n`);
+  mysqlStore.recordEvent('price', row);
 }
 
 function readHistoryRows() {
@@ -82,7 +85,10 @@ function linearRegression(points, metric = 'lowest_price') {
 }
 
 function loadBanditState() { try { return JSON.parse(fs.readFileSync(BANDIT_STATE_FILE, 'utf8')); } catch { return {}; } }
-function saveBanditState(state) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(BANDIT_STATE_FILE, JSON.stringify(state, null, 2)); }
+function saveBanditState(state) {
+  fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(BANDIT_STATE_FILE, JSON.stringify(state, null, 2));
+  for (const [item, value] of Object.entries(state)) mysqlStore.saveState('bandit', item, value);
+}
 function recordOutcome(item, sold, realizedMargin = null) {
   const state = loadBanditState(); const key = item.toLowerCase();
   const entry = state[key] || { n_outcomes: 0, n_sold: 0, margin_sum: 0, margin_sumsq: 0 };
@@ -108,7 +114,11 @@ async function getCachedHistoryAggregate(item) {
   if (status === 200) cache.set(cacheKey, { ts: Date.now(), status, body }); return [status, body];
 }
 function loadWatchlist() { try { const x = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8')); return Array.isArray(x) ? x : []; } catch { return []; } }
-function saveWatchlist(items) { fs.mkdirSync(path.dirname(WATCHLIST_FILE), { recursive: true }); fs.writeFileSync(WATCHLIST_FILE, JSON.stringify([...new Set(items)].sort())); }
+function saveWatchlist(items) {
+  const value = [...new Set(items)].sort();
+  fs.mkdirSync(path.dirname(WATCHLIST_FILE), { recursive: true }); fs.writeFileSync(WATCHLIST_FILE, JSON.stringify(value));
+  mysqlStore.saveState('watchlist', 'default', value);
+}
 
 module.exports = { DATA_DIR, KEY_FILE, HISTORY_FILE, BANDIT_STATE_FILE, WATCHLIST_FILE, MARKET_FEE,
   CONFIDENCE_REFERENCE_COUNT, CACHE_TTL_SECONDS, loadApiKey, getCachedPrice, getCachedHistoryAggregate,

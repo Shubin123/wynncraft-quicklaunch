@@ -1,4 +1,5 @@
 *.key
+key.text
 .env
 .env.local
 __pycache__/

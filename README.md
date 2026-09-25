@@ -72,6 +72,52 @@ npm stop
 Then visit the unified Web Dashboard in your browser:
 👉 **[http://localhost:8123/bot.html](http://localhost:8123/bot.html)**
 
+### MySQL data mirror
+
+Market scans, price points, trade journal entries, watchlist/bandit state, and
+manual paths are always saved locally first, then mirrored to MySQL without a
+database outage interrupting the bot. Configure the mirror once:
+
+```bash
+npm run db:init
+```
+
+Import any records that were collected before MySQL was enabled with:
+
+```bash
+npm run db:backfill
+```
+
+Seed the initial tracked price baselines (they are explicitly labelled as
+non-live values), or provide your own values:
+
+```bash
+npm run db:seed-prices
+npm run db:seed-prices -- "Spring=9000" "Comet=21000" "Idol=10000"
+```
+
+On Linux, keep the existing one-line `key.text` password file in the directory
+where you invoke the script and restrict it to your user (`chmod 600 key.text`).
+Run a backup once with `npm run wynner`, then install the daily systemd user
+timer:
+
+```bash
+chmod 600 key.text
+bash scripts/install_daily_mysql_backup.sh
+```
+
+The setup stores the password only in the macOS Keychain. Its non-secret
+connection settings and the pinned AWS RDS CA are stored with owner-only
+permissions in `~/.config/wynn-dashboard/`; neither is added to the repo.
+
+Read mirrored records from the local server:
+
+```text
+/api/storage/status
+/api/storage/events?stream=market&item=spring&limit=100
+/api/storage/state?kind=watchlist
+```
+
 ### First Launch Checklist
 
 1. Open Prism Launcher once and select **Wynncraft-1.21.11**. This downloads the Minecraft assets and prompts you to accept Mojang's EULA.

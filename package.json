@@ -3,6 +3,9 @@
   "version": "2.2.0",
   "description": "Wynncraft Quicklaunch & Mineflayer Web Bot Controller with 3D Viewer & AI Insights",
   "main": "scripts/wynn_bot_server.js",
+  "dependencies": {
+    "mysql2": "^3.14.4"
+  },
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "start": "bash scripts/start_all.sh",
@@ -12,6 +15,11 @@
     "textures": "python3 scripts/apply_wynn_textures.py",
     "mineflayer:check": "node scripts/mineflayer/check.mjs",
     "preflight": "bash scripts/preflight.sh --node",
+    "db:init": "node scripts/mysql_setup.js",
+    "db:backfill": "node scripts/mysql_backfill.js",
+    "db:seed-prices": "node scripts/seed_tracked_prices.js",
+    "db:backup:linux": "bash scripts/linux_mysql_backup.sh",
+    "wynner": "bash scripts/wynner.sh",
     "test": "bash tests/run_all_tests.sh && bash scripts/check.sh",
     "postinstall": "cd mineflayer-wynn && npm ci --no-audit --no-fund"
   },

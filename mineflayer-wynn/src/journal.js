@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const mysqlStore = require('../../scripts/lib/mysql_store');
 
 /**
  * The trade journal: `trade_intent` and `trade_outcome` from
@@ -172,6 +173,7 @@ function createJournal(options = {}) {
       intents.set(row.intent_id, row);
       try {
         appendRow(file, row);
+        mysqlStore.recordEvent('trade', row);
       } catch (err) {
         // A journal that cannot be written must not stop a trade the user
         // asked for; it degrades to in-memory idempotency for this session.
@@ -185,6 +187,7 @@ function createJournal(options = {}) {
       outcomes.set(row.intent_id, row);
       try {
         appendRow(file, row);
+        mysqlStore.recordEvent('trade', row);
       } catch (err) {
         journal.lastError = err.message;
       }

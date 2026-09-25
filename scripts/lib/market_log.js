@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { parseIdentificationLore, scoreRoll } = require('./item_db');
+const mysqlStore = require('./mysql_store');
 
 const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'wynn-dashboard');
 const SCAN_FILE = path.join(DATA_DIR, 'market_scans.jsonl');
@@ -90,6 +91,7 @@ function recordScan(market, { sessionId = null, world = null, now = Date.now() /
     rows.push(observation);
   }
   safeAppendRows(scanFile(), rows);
+  mysqlStore.recordEvents('market', rows);
   lastScan = { signature, ts: now };
   return scan;
 }
