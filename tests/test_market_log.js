@@ -102,5 +102,23 @@ test('survives torn lines and prunes old rows', () => {
   assert.deepStrictEqual(log.splitRows(rows())[1].map((r) => r.item_key), ['fresh', 'spring', 'comet']);
 });
 
-console.log(`\n\x1b[1mMarket recorder tests result: ${passed}/8 passed\x1b[0m`);
-if (passed !== 8) process.exitCode = 1;
+test('records a board exactly as the mineflayer market parser reads it', () => {
+  // The bot server feeds parseMarketWindow output straight into recordScan, so
+  // the two modules must agree on shape: open/isMarket, customName, tier, lore.
+  const { parseMarketWindow } = require('../mineflayer-wynn/src/market');
+  const slots = new Array(90).fill(null);
+  slots[10] = { name: 'bow', customName: 'Spring', customLore: ['Legendary Item', 'Price: 2 le 12 eb', 'Amount: 1', 'Seller: Alice'], count: 1 };
+  slots[11] = { name: 'bow', customName: 'Spring', customLore: ['Legendary Item', 'Price: 2 le 20 eb', 'Amount: 1', 'Seller: Bob'], count: 1 };
+  slots[53] = { name: 'arrow', customName: 'Next Page', customLore: [], count: 1 };
+  const board = parseMarketWindow({ id: 3, title: 'Trade Market', slots, inventoryStart: 54 });
+  const scan = log.recordScan(board, { world: 'NA3', now: 2000 });
+  assert.ok(scan, 'a parsed Trade Market board must be recorded');
+  assert.strictEqual(scan.listing_count, 2);
+  assert.strictEqual(scan.container_slots, 54);
+  const obs = log.splitRows(rows())[1];
+  assert.deepStrictEqual(obs.map((o) => o.price), [2 * 4096 + 12 * 64, 2 * 4096 + 20 * 64]);
+  assert.strictEqual(obs[0].item_variant, 'spring|legendary|');
+});
+
+console.log(`\n\x1b[1mMarket recorder tests result: ${passed}/9 passed\x1b[0m`);
+if (passed !== 9) process.exitCode = 1;

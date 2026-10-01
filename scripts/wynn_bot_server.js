@@ -77,6 +77,7 @@ const { serveStatic } = require('./routes/static_routes');
 const waypointStore = require('./lib/waypoints');
 const manualPathStore = require('./lib/manual_paths');
 const mysqlStore = require('./lib/mysql_store');
+const marketLog = require('./lib/market_log');
 
 // The bot and dashboard now share this process. Keep WYNN_BOT_PORT as a
 // compatibility override, but make the unified service's documented port
@@ -970,6 +971,15 @@ class BotManager extends EventEmitter {
     const scan = this.bot.market
       ? this.bot.market.scan()
       : (parseMarketWindow ? parseMarketWindow(this.bot.currentWindow) : { open: false });
+    // Every board the bot reads becomes a market_scan / listing_observation
+    // record. The recorder dedupes and rate-limits, so polling from several
+    // tabs does not fill the log, and a failed write never breaks the read.
+    try {
+      const world = this.bot.wynn?.currentServer;
+      marketLog.recordScan(scan, { world: world && world !== 'Unknown' ? world : null });
+    } catch (err) {
+      this.addLog('MARKET', `Could not record market scan: ${err.message}`);
+    }
     return {
       ok: true,
       locations: MARKET_LOCATIONS || {},

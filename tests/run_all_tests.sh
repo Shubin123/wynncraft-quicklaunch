@@ -82,6 +82,7 @@ node "$SCRIPT_DIR/test_trades_api.js"
 
 # 15. Phase 1 market recorder: schema, dedupe, derived liquidity
 node "$SCRIPT_DIR/test_market_log.js"
+node "$SCRIPT_DIR/test_market_recording.js"
 node "$SCRIPT_DIR/test_waypoints.js"
 node "$SCRIPT_DIR/test_manual_paths.js"
 "${PYTHON_BIN}" "$SCRIPT_DIR/test_market_log.py"

@@ -2,7 +2,8 @@
 
 function inferTier(customName, lore) {
   const text = `${customName || ''} ${(lore || []).join(' ')}`;
-  return (text.match(/\b(mythic|fabled|legendary|rare|set|unique|normal)\b/i) || [])[1]?.toLowerCase() || null;
+  // Keep the casing the game shows; tag and variant keys lowercase it themselves.
+  return (text.match(/\b(mythic|fabled|legendary|rare|set|unique|normal)\b/i) || [])[1] || null;
 }
 
 function classifyItemTags(name, customName, lore, tier = null) {
